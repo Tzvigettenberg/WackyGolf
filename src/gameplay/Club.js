@@ -14,16 +14,16 @@ export const CLUBS = [
     name: 'Driver',
     short: 'DR',
     color: '#3a8eff',
-    maxSpeed: 52,           // yd/s at full power
-    launchAngle: deg(11),   // low arc — max range
+    maxSpeed: 60,           // yd/s at full power
+    launchAngle: deg(14),   // raised from 11° for a real arc, less rolling
   },
   {
     id: 'iron',
     name: '5-Iron',
     short: '5i',
     color: '#22c55e',
-    maxSpeed: 42,
-    launchAngle: deg(22),   // medium arc
+    maxSpeed: 44,
+    launchAngle: deg(24),   // medium-high arc
   },
   {
     id: 'wedge',
@@ -31,15 +31,15 @@ export const CLUBS = [
     short: 'W',
     color: '#f59e0b',
     maxSpeed: 30,
-    launchAngle: deg(50),   // high lob — short, stops fast
+    launchAngle: deg(52),   // high lob — short, stops fast
   },
   {
     id: 'putter',
     name: 'Putter',
     short: 'P',
     color: '#a855f7',
-    maxSpeed: 16,
-    launchAngle: deg(0),    // rolls — no vertical lift
+    maxSpeed: 14,           // ~22 yd roll cap — green-only at hole scale
+    launchAngle: deg(0),    // rolls flat
   },
 ];
 

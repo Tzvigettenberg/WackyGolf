@@ -1,23 +1,17 @@
-// Top-down hole minimap — Phase 2
+// Top-down hole minimap — Phase 3.2
 //
-// Canvas2D, ~140px square, top-right corner. Shows:
-//   - rough / fairway / green / cup / tee
-//   - live ball position
-//   - predicted landing-rest ring during aim (cyan, matches the 3D ring)
+// Canvas2D, ~144 px square, top-right corner. Shows the current hole's
+// rough/fairway/green/cup, the live ball position, and the predicted
+// trajectory (dotted) + landing rest (cyan ring) during aim.
 //
-// Cheap to draw — pure 2D rect/arc primitives. Redraws every frame.
+// Hole layout is hot-swappable via setLayout() so we can change holes
+// mid-run.
 
-const SIZE = 144;            // CSS px
-const PAD = 6;               // inner padding inside the canvas
+const SIZE = 144;
+const PAD = 6;
 
 export class Minimap {
-  constructor({ teePos, cupPos, fairwayRect, greenRadius, bounds }) {
-    this.teePos = { x: teePos.x, z: teePos.z };
-    this.cupPos = { x: cupPos.x, z: cupPos.z };
-    this.fairwayRect = fairwayRect;       // { cx, cz, w, h }
-    this.greenRadius = greenRadius;
-    this.bounds = bounds || { minX: -22, maxX: 22, minZ: -22, maxZ: 22 };
-
+  constructor(layout) {
     this.canvas = document.createElement('canvas');
     this.canvas.id = 'minimap';
     this.canvas.style.cssText = `
@@ -40,52 +34,103 @@ export class Minimap {
 
     document.body.appendChild(this.canvas);
 
-    this.ballX = teePos.x;
-    this.ballZ = teePos.z;
+    this.ballX = 0;
+    this.ballZ = 0;
     this.targetX = null;
     this.targetZ = null;
-    this.trajectory = null;   // array of { x, z } samples in world coords
+    this.trajectory = null;
+
+    this.setLayout(layout);
   }
 
-  setBall(x, z)            { this.ballX = x; this.ballZ = z; }
-  setTarget(x, z)          { this.targetX = x; this.targetZ = z; }
-  clearTarget()            { this.targetX = null; this.targetZ = null; }
-  setTrajectory(samples)   { this.trajectory = samples; }
-  clearTrajectory()        { this.trajectory = null; }
+  /** Swap the hole layout (called when a new hole is loaded). */
+  setLayout(layout) {
+    this.teePos      = { x: layout.teePos.x, z: layout.teePos.z };
+    this.cupPos      = { x: layout.cupPos.x, z: layout.cupPos.z };
+    this.fairwayRects = layout.fairwayRects;
+    this.greenCenter = layout.greenCenter || { x: this.cupPos.x, z: this.cupPos.z };
+    this.greenRadius = layout.greenRadius;
+    this.bunkers    = layout.bunkers || [];
+    this.water       = layout.water || [];
+    this.bounds      = layout.bounds || { minX: -22, maxX: 22, minZ: -22, maxZ: 22 };
+    // initialize ball at tee for any hole start
+    this.ballX = this.teePos.x;
+    this.ballZ = this.teePos.z;
+  }
 
-  // map world XZ to canvas px
+  setBall(x, z)         { this.ballX = x; this.ballZ = z; }
+  setTarget(x, z)       { this.targetX = x; this.targetZ = z; }
+  clearTarget()         { this.targetX = null; this.targetZ = null; }
+  setTrajectory(samp)   { this.trajectory = samp; }
+  clearTrajectory()     { this.trajectory = null; }
+
+  // world XZ → canvas px
   _tx(wx) {
     const { minX, maxX } = this.bounds;
     return PAD + ((wx - minX) / (maxX - minX)) * (SIZE - 2 * PAD);
   }
-  // World -Z (cup) is "downrange" / "up" on the minimap. Canvas Y grows downward,
-  // so smaller world Z must map to smaller pixel Y. No flip needed.
   _tz(wz) {
     const { minZ, maxZ } = this.bounds;
     return PAD + ((wz - minZ) / (maxZ - minZ)) * (SIZE - 2 * PAD);
+  }
+  _scaleX(worldUnits) {
+    const { minX, maxX } = this.bounds;
+    return (worldUnits / (maxX - minX)) * (SIZE - 2 * PAD);
   }
 
   draw() {
     const ctx = this.ctx;
 
-    // background — rough
+    // bg = rough
     ctx.fillStyle = '#3e8c47';
     ctx.fillRect(0, 0, SIZE, SIZE);
 
-    // fairway
-    const fw = this.fairwayRect;
+    // water hazards (draw BEFORE fairway so fairway islands visually sit on top of water)
+    if (this.water && this.water.length) {
+      ctx.fillStyle = '#2a8acc';
+      for (const w of this.water) {
+        if (w.type === 'circle') {
+          ctx.beginPath();
+          ctx.arc(this._tx(w.cx), this._tz(w.cz), this._scaleX(w.radius), 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          const left = this._tx(w.cx - w.w / 2);
+          const right = this._tx(w.cx + w.w / 2);
+          const top = this._tz(w.cz - w.h / 2);
+          const bot = this._tz(w.cz + w.h / 2);
+          ctx.fillRect(left, top, right - left, bot - top);
+        }
+      }
+    }
+
+    // fairway segments
     ctx.fillStyle = '#5fb160';
-    const fwLeft  = this._tx(fw.cx - fw.w / 2);
-    const fwRight = this._tx(fw.cx + fw.w / 2);
-    const fwTop   = this._tz(fw.cz + fw.h / 2);
-    const fwBot   = this._tz(fw.cz - fw.h / 2);
-    ctx.fillRect(fwLeft, fwTop, fwRight - fwLeft, fwBot - fwTop);
+    for (const r of this.fairwayRects) {
+      const left = this._tx(r.cx - r.w / 2);
+      const right = this._tx(r.cx + r.w / 2);
+      // smaller world Z (toward cup) is at the TOP of the canvas
+      const top = this._tz(r.cz - r.h / 2);
+      const bot = this._tz(r.cz + r.h / 2);
+      ctx.fillRect(left, top, right - left, bot - top);
+    }
+
+    // bunkers
+    if (this.bunkers && this.bunkers.length) {
+      ctx.fillStyle = '#e0c98c';
+      for (const b of this.bunkers) {
+        ctx.beginPath();
+        ctx.arc(this._tx(b.cx), this._tz(b.cz), this._scaleX(b.radius), 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
 
     // green
-    const greenPxRadius = this._scaleX(this.greenRadius);
     ctx.fillStyle = '#82d27c';
     ctx.beginPath();
-    ctx.arc(this._tx(this.cupPos.x), this._tz(this.cupPos.z), greenPxRadius, 0, Math.PI * 2);
+    ctx.arc(
+      this._tx(this.greenCenter.x), this._tz(this.greenCenter.z),
+      this._scaleX(this.greenRadius), 0, Math.PI * 2
+    );
     ctx.fill();
 
     // tee box
@@ -93,15 +138,14 @@ export class Minimap {
     const teeSize = 7;
     ctx.fillRect(this._tx(this.teePos.x) - teeSize / 2, this._tz(this.teePos.z) - teeSize / 2, teeSize, teeSize);
 
-    // cup
-    ctx.fillStyle = '#111';
-    ctx.beginPath();
-    ctx.arc(this._tx(this.cupPos.x), this._tz(this.cupPos.z), 3, 0, Math.PI * 2);
-    ctx.fill();
-    // tiny flag triangle next to cup
-    ctx.fillStyle = '#ff4444';
+    // cup + flag
     const cupCx = this._tx(this.cupPos.x);
     const cupCz = this._tz(this.cupPos.z);
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(cupCx, cupCz, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ff4444';
     ctx.beginPath();
     ctx.moveTo(cupCx + 1, cupCz - 8);
     ctx.lineTo(cupCx + 8, cupCz - 6);
@@ -115,10 +159,9 @@ export class Minimap {
     ctx.lineTo(cupCx + 0.5, cupCz);
     ctx.stroke();
 
-    // trajectory dotted line (during aim)
+    // trajectory dots
     if (this.trajectory && this.trajectory.length > 1) {
       ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
-      // draw every other sample as a small dot
       for (let i = 0; i < this.trajectory.length; i += 2) {
         const s = this.trajectory[i];
         ctx.beginPath();
@@ -127,20 +170,19 @@ export class Minimap {
       }
     }
 
-    // predicted target (during aim)
+    // predicted target ring (red so it pops against the green minimap)
     if (this.targetX !== null) {
-      ctx.strokeStyle = '#00e5ff';
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.18)';
+      ctx.strokeStyle = '#ff3344';
+      ctx.fillStyle = 'rgba(255, 51, 68, 0.22)';
       ctx.lineWidth = 2;
-      const r = 6;
       ctx.beginPath();
-      ctx.arc(this._tx(this.targetX), this._tz(this.targetZ), r, 0, Math.PI * 2);
+      ctx.arc(this._tx(this.targetX), this._tz(this.targetZ), 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
 
     // ball
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = '#fff';
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -149,13 +191,8 @@ export class Minimap {
     ctx.stroke();
 
     // border
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, SIZE - 1, SIZE - 1);
-  }
-
-  _scaleX(worldUnits) {
-    const { minX, maxX } = this.bounds;
-    return (worldUnits / (maxX - minX)) * (SIZE - 2 * PAD);
   }
 }

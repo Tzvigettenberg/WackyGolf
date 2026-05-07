@@ -42,9 +42,10 @@ export class SwingController {
     this.dy = 0;
 
     this.orbs = this._makeOrbs(28);
-    this.landingMarker = this._makeLandingMarker();
-    this.landingMarker.visible = false;
-    scene.add(this.landingMarker);
+    // Landing-rest ring is intentionally NOT added to the 3D scene anymore —
+    // the player gets that feedback on the minimap (red dot) instead, for
+    // added challenge in the 3D view.
+    this.landingMarker = { visible: false, position: { set: () => {}, copy: () => {} } };
 
     // Smoothed landing-marker chase. The raw prediction can jump by yards
     // when the bounce/roll transition flips at certain power levels — the
@@ -53,8 +54,14 @@ export class SwingController {
     this._smoothRest = new Vector3();
     this._smoothInit = false;
     this.enabled = true;
+    this.surfaces = null; // set via setSurfaces on each new hole — used by the predictor
 
     this._bind();
+  }
+
+  /** Update which hole's surface map the predictor should use. */
+  setSurfaces(surfaces) {
+    this.surfaces = surfaces || null;
   }
 
   /** Lock or unlock swing input — used during score banners and run-over. */
@@ -96,9 +103,9 @@ export class SwingController {
   _makeLandingMarker() {
     const geom = new RingGeometry(0.7, 1.1, 32);
     const mat = new MeshBasicMaterial({
-      color: 0x00e5ff,
+      color: 0xff3344,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.9,
       depthWrite: false,
       depthTest: false,
     });
@@ -206,7 +213,7 @@ export class SwingController {
       return;
     }
 
-    const traj = predictTrajectory(this.ball.position, launch.velocity);
+    const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
     // store the prediction; the visible marker chases it in tick() at a steady
@@ -226,20 +233,18 @@ export class SwingController {
 
   _placeOrbs(samples, power, firstContactIdx) {
     const n = this.orbs.length;
-    // Show only the airborne arc — that's the part of the prediction the
-    // player can rely on. After first ground contact, bounces and rolls are
-    // chaotic; the minimap dotted line still shows the full path.
+    // Show only the airborne arc. After first ground contact, bounces+rolls
+    // are chaotic; the minimap dotted line still shows the full path.
     const limit = Math.min(samples.length, firstContactIdx + 1, 12);
-    const tintR = 1.0;
-    const tintG = 1.0 - power * 0.45;
-    const tintB = 1.0 - power * 0.85;
+    // Match the power-meter HSL gradient exactly: green (0%) → red (100%).
+    const hue = (120 - power * 120) / 360;
     for (let i = 0; i < n; i++) {
       const orb = this.orbs[i];
       if (i < limit) {
         const s = samples[i];
         orb.position.set(s.x, s.y, s.z);
         orb.visible = true;
-        orb.material.color.setRGB(tintR, tintG, tintB);
+        orb.material.color.setHSL(hue, 0.85, 0.55);
         const t = i / Math.max(1, limit - 1);
         orb.scale.setScalar(1 - t * 0.4);
         orb.material.opacity = 0.95 - t * 0.45;

@@ -73,25 +73,26 @@ export class Run {
     return false;
   }
 
-  /** Move on to the next hole — same template for now. */
-  nextHole() {
-    this.holeNumber += 1;
+  /** Begin the current hole with given meta — resets strokes, status, last result. */
+  startHole(meta) {
+    this.holeMeta = meta || this.holeMeta;
     this.strokes = 0;
-    this.holeMeta = { par: DEFAULT_PAR, strokeLimit: DEFAULT_PAR + DEFAULT_LEEWAY };
     this.status = 'playing';
     this.lastResult = null;
     this._emit();
   }
 
-  /** Start a fresh run. */
-  resetRun() {
+  /** Move on to the next hole. Pass meta from the new template. */
+  nextHole(meta) {
+    this.holeNumber += 1;
+    this.startHole(meta);
+  }
+
+  /** Start a fresh run. Pass meta from the first template. */
+  resetRun(meta) {
     this.cash = STARTING_CASH;
     this.holeNumber = 1;
-    this.strokes = 0;
-    this.holeMeta = { par: DEFAULT_PAR, strokeLimit: DEFAULT_PAR + DEFAULT_LEEWAY };
-    this.status = 'playing';
-    this.lastResult = null;
-    this._emit();
+    this.startHole(meta);
   }
 
   // ----- queries -----

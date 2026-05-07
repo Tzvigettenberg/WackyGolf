@@ -22,6 +22,69 @@ export const REST_SPEED = 0.25;          // below this, ball comes to rest
 // landing-marker lerp in SwingController.
 export const BOUNCE_VY_THRESHOLD = -1.5;
 
+// ---------------------------------------------------------------------------
+// Surface modifiers — applied when ball is in contact with the ground.
+// Each surface tweaks roll friction and bounce energy.
+// ---------------------------------------------------------------------------
+export const SURFACE_MODIFIERS = {
+  fairway: { friction: 1.0, bounce: 1.0,  bounceFriction: 1.0  },
+  green:   { friction: 0.55, bounce: 0.55, bounceFriction: 0.85 },
+  rough:   { friction: 1.9, bounce: 0.45, bounceFriction: 0.7  },
+  sand:    { friction: 4.0, bounce: 0.10, bounceFriction: 0.45 },
+  // water: not really applied — ball stops on contact and a penalty kicks in,
+  // see step() below. Listed here so any code looking up a modifier won't crash.
+  water:   { friction: 0,   bounce: 0,    bounceFriction: 0 },
+};
+
+/**
+ * Surface lookup. Priority order:
+ *   sand → green → fairway → water → rough
+ * (Sand near a green still counts as sand. An island green inside water
+ * still counts as green. A fairway island inside water still counts as
+ * fairway — used for bail-out landing zones in long water carries.)
+ */
+export function getSurfaceAt(surfaces, x, z) {
+  if (!surfaces) return 'fairway';
+
+  const bs = surfaces.bunkers;
+  if (bs) {
+    for (let i = 0; i < bs.length; i++) {
+      const b = bs[i];
+      const dx = x - b.cx, dz = z - b.cz;
+      if (dx * dx + dz * dz < b.radius * b.radius) return 'sand';
+    }
+  }
+
+  const g = surfaces.green;
+  if (g) {
+    const dx = x - g.cx, dz = z - g.cz;
+    if (dx * dx + dz * dz < g.radius * g.radius) return 'green';
+  }
+
+  const fws = surfaces.fairwayRects;
+  if (fws) {
+    for (let i = 0; i < fws.length; i++) {
+      const r = fws[i];
+      if (Math.abs(x - r.cx) <= r.w / 2 && Math.abs(z - r.cz) <= r.h / 2) return 'fairway';
+    }
+  }
+
+  const ws = surfaces.water;
+  if (ws) {
+    for (let i = 0; i < ws.length; i++) {
+      const w = ws[i];
+      if (w.type === 'circle') {
+        const dx = x - w.cx, dz = z - w.cz;
+        if (dx * dx + dz * dz < w.radius * w.radius) return 'water';
+      } else {
+        if (Math.abs(x - w.cx) <= w.w / 2 && Math.abs(z - w.cz) <= w.h / 2) return 'water';
+      }
+    }
+  }
+
+  return 'rough';
+}
+
 export class BallPhysics {
   constructor({ teePosition, cupPosition }) {
     this.tee = teePosition.clone();
@@ -35,6 +98,11 @@ export class BallPhysics {
     // render faster than the physics step rate (e.g., 120 Hz phones).
     this.previousPosition = this.position.clone();
     this.velocity = new Vector3();
+    this.surfaces = null; // assigned via setHole — fairway/green/sand layout for this hole
+    // Position the ball was at when the most recent shot launched. If the shot
+    // ends in water, host code teleports the ball back here + a penalty stroke.
+    this.lastShotStart = this.position.clone();
+    this.isInWater = false;
 
     this.isAtRest = true;
     this.isHoled = false;
@@ -48,18 +116,31 @@ export class BallPhysics {
     this.position.copy(this.tee);
     this.position.y = BALL_RADIUS;
     this.previousPosition.copy(this.position);
+    this.lastShotStart.copy(this.position);
     this.velocity.set(0, 0, 0);
     this.isAtRest = true;
     this.isHoled = false;
+    this.isInWater = false;
+  }
+
+  /** Move tee/cup for a new hole, set the surface map, and reset the ball. */
+  setHole(teePosition, cupPosition, surfaces) {
+    this.tee.copy(teePosition);
+    this.cup.copy(cupPosition);
+    this.surfaces = surfaces || null;
+    this.reset();
   }
 
   /** Launch the ball with a given velocity vector. */
   launch(velocity) {
     // sync prev → current so interpolation doesn't ghost back to an old position
     this.previousPosition.copy(this.position);
+    // remember where the shot started in case it ends in water (penalty replay)
+    this.lastShotStart.copy(this.position);
     this.velocity.copy(velocity);
     this.isAtRest = false;
     this.isHoled = false;
+    this.isInWater = false;
   }
 
   step(dt) {
@@ -88,25 +169,36 @@ export class BallPhysics {
     if (this.position.y <= BALL_RADIUS) {
       this.position.y = BALL_RADIUS;
 
-      if (this.velocity.y < BOUNCE_VY_THRESHOLD) {
-        // bounce
-        this.velocity.y = -this.velocity.y * BOUNCE;
-        this.velocity.x *= BOUNCE_FRICTION;
-        this.velocity.z *= BOUNCE_FRICTION;
-      } else {
-        // rolling
-        this.velocity.y = 0;
+      const surface = getSurfaceAt(this.surfaces, this.position.x, this.position.z);
 
-        // roll friction on the XZ plane
+      // Water: ball splashes, stops dead. Host detects isInWater on rest and
+      // applies a +1 penalty + ball replay.
+      if (surface === 'water') {
+        this.velocity.set(0, 0, 0);
+        this.isInWater = true;
+        this.isAtRest = true;
+        if (this.onCameToRest) this.onCameToRest();
+        return;
+      }
+
+      const mod = SURFACE_MODIFIERS[surface];
+
+      if (this.velocity.y < BOUNCE_VY_THRESHOLD) {
+        // bounce — surface attenuates both vertical and horizontal energy
+        this.velocity.y = -this.velocity.y * BOUNCE * mod.bounce;
+        this.velocity.x *= BOUNCE_FRICTION * mod.bounceFriction;
+        this.velocity.z *= BOUNCE_FRICTION * mod.bounceFriction;
+      } else {
+        // rolling — friction scaled by surface
+        this.velocity.y = 0;
         const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
         if (horizSpeed > 0) {
-          const newSpeed = Math.max(0, horizSpeed - ROLL_DECEL * dt);
+          const newSpeed = Math.max(0, horizSpeed - ROLL_DECEL * mod.friction * dt);
           const ratio = newSpeed / horizSpeed;
           this.velocity.x *= ratio;
           this.velocity.z *= ratio;
         }
 
-        // come to rest below threshold
         if (Math.hypot(this.velocity.x, this.velocity.z) < REST_SPEED) {
           this.velocity.set(0, 0, 0);
           this.isAtRest = true;
@@ -149,7 +241,7 @@ const SAMPLE_INTERVAL = 3;            // emit a trajectory sample every N steps 
 const MAX_SAMPLES = 60;               // hard cap on trajectory points returned
 
 /** One physics sub-step. Mutates the {p, v} pair. Returns true once at rest. */
-function _step(p, v) {
+function _step(p, v, surfaces) {
   v.y += GRAVITY * PREDICT_DT;
 
   const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
@@ -166,15 +258,25 @@ function _step(p, v) {
 
   if (p.y <= BALL_RADIUS) {
     p.y = BALL_RADIUS;
+    const surface = getSurfaceAt(surfaces, p.x, p.z);
+
+    // Water in the predictor too — ball stops here so the cyan ring lands at the splash spot.
+    if (surface === 'water') {
+      v.x = 0; v.y = 0; v.z = 0;
+      return true;
+    }
+
+    const mod = SURFACE_MODIFIERS[surface];
+
     if (v.y < BOUNCE_VY_THRESHOLD) {
-      v.y = -v.y * BOUNCE;
-      v.x *= BOUNCE_FRICTION;
-      v.z *= BOUNCE_FRICTION;
+      v.y = -v.y * BOUNCE * mod.bounce;
+      v.x *= BOUNCE_FRICTION * mod.bounceFriction;
+      v.z *= BOUNCE_FRICTION * mod.bounceFriction;
     } else {
       v.y = 0;
       const horiz = Math.hypot(v.x, v.z);
       if (horiz > 0) {
-        const newSpeed = Math.max(0, horiz - ROLL_DECEL * PREDICT_DT);
+        const newSpeed = Math.max(0, horiz - ROLL_DECEL * mod.friction * PREDICT_DT);
         const ratio = newSpeed / horiz;
         v.x *= ratio; v.z *= ratio;
       }
@@ -188,11 +290,11 @@ function _step(p, v) {
  * Forward-simulate to final rest. Returns { x, y, z } of resting position.
  * Used by the cyan ground ring + minimap target circle.
  */
-export function predictRest(startPos, startVel) {
+export function predictRest(startPos, startVel, surfaces) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   for (let i = 0; i < PREDICT_MAX_STEPS; i++) {
-    if (_step(p, v)) return { x: p.x, y: p.y, z: p.z };
+    if (_step(p, v, surfaces)) return { x: p.x, y: p.y, z: p.z };
   }
   return { x: p.x, y: p.y, z: p.z };
 }
@@ -208,7 +310,7 @@ export function predictRest(startPos, startVel) {
  *                     3D orb display to the airborne arc only — the part
  *                     of the prediction that's most informative to the player.
  */
-export function predictTrajectory(startPos, startVel) {
+export function predictTrajectory(startPos, startVel, surfaces) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   const samples = [];
@@ -221,7 +323,7 @@ export function predictTrajectory(startPos, startVel) {
       samples.push({ x: p.x, y: p.y, z: p.z });
     }
 
-    const atRest = _step(p, v);
+    const atRest = _step(p, v, surfaces);
 
     if (firstContactIdx < 0 && wasAirborne && p.y <= BALL_RADIUS + 0.05) {
       firstContactIdx = Math.max(0, samples.length - 1);

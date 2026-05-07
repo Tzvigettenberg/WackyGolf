@@ -9,8 +9,8 @@
 
 import { Vector3 } from 'three';
 
-const BASE_OFFSET = new Vector3(0, 6, 11);     // behind & above when yaw = 0
-const BASE_LOOK   = new Vector3(0, 0, -6);     // look point relative to ball
+const BASE_OFFSET = new Vector3(0, 7, 13);     // behind & above when yaw = 0
+const BASE_LOOK   = new Vector3(0, 0, -14);    // look point relative to ball — further downrange now that holes are bigger
 const POS_LERP    = 0.32;                      // camera position chase rate
 const YAW_LERP    = 0.18;                      // yaw catch-up rate (per frame)
 

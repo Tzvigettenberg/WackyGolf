@@ -166,6 +166,34 @@ Each phase ends with a deployable, testable build. Estimated timing assumes a co
 - [ ] Run start drops player straight into Round 1 Preview (no starter shop)
 - [ ] **Milestone:** Balatro-style risk-reward decision shows up in the loop. Players can chain skips for tags, but lose shop access.
 
+### Phase 5.5 — Title Screen *(planned, not yet implemented)*
+
+A proper game-start screen instead of dropping straight into a hole.
+
+- Full-screen view, no HUD chrome
+- Background: live 3D scene of one of our holes, camera **slowly orbits the ball/cup** for a relaxed showcase
+- Cycle hole every ~5–7 seconds (fade transition between holes — same `loadCurrentHole` machinery, just paused gameplay)
+- Centered logo / "WACKY GOLF" text
+- Two big buttons:
+  - **Play** — starts a fresh run (calls `run.resetRun(...)` + `loadCurrentHole`)
+  - **Resume** — only shown when there's a saved mid-run; restores from `localStorage`
+- A **Collection** button on the title screen too so you can browse holes/items without starting a run
+- All swing/UI input gated off until Play/Resume is hit (`swing.setEnabled(false)`)
+
+### Phase 5.6 — Collection / Library page *(implemented in 3.6, expand as content grows)*
+
+Already wired:
+- HUD button (📋) opens a modal grid of all hole templates
+- Locked holes show a "?" thumbnail; played holes show a top-down preview + name + par
+- Discovery persists across runs in `localStorage` (key: `wackygolf_discovered_holes_v1`)
+- Click a discovered hole → larger preview + feature summary
+
+To expand later:
+- **Items tab** — once items exist, the same modal grows a second tab. Each unlocked item card shows name, rarity, effect, and is greyed/silhouetted until first encountered
+- **Stats tab** — career-stats overlay (best run, total cash, holes played, splash count, hole-in-ones)
+
+This doubles as a dev tool: easy way to scroll through every hole and visually check that layouts read right after edits.
+
 ### Phase 6 — Content & polish *(rolling, post-MVP)*
 
 These are the chunks that come after v0.1 and define v0.2 → v1.0. Each is its own ~few-day milestone:
