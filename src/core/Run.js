@@ -11,16 +11,42 @@ const STARTING_CASH = 8;
 const DEFAULT_PAR = 4;
 const DEFAULT_LEEWAY = 4;   // stroke limit = par + leeway
 
-/** Score → cash payout. Mirrors GDD § 8. */
+/**
+ * Score → cash payout. The cash is built up per under-par stroke so the
+ * cash-out screen can count up "balls" with each one paying more than the
+ * last. Returns strokes/par/underBy so the screen can render the visual.
+ */
+const PER_BALL_UNDER = [10, 15, 25, 40, 60]; // 1st, 2nd, 3rd, ... under par
+const PAR_CASH = 5;
+const BOGEY_CASH = 2;
+
 export function computeScore(strokes, par) {
-  if (strokes === 1) return { name: 'HOLE IN ONE!', cash: 50, kind: 'ace' };
-  const diff = strokes - par;
-  if (diff <= -2) return { name: 'EAGLE', cash: 25, kind: 'eagle' };
-  if (diff === -1) return { name: 'BIRDIE', cash: 15, kind: 'birdie' };
-  if (diff === 0)  return { name: 'PAR', cash: 8, kind: 'par' };
-  if (diff === 1)  return { name: 'BOGEY', cash: 3, kind: 'bogey' };
-  if (diff === 2)  return { name: 'DOUBLE BOGEY', cash: 0, kind: 'doublebogey' };
-  return { name: `+${diff}`, cash: 0, kind: 'over' };
+  const overBy = strokes - par;        // positive = over par
+  const underBy = -overBy;             // positive = under par
+
+  let name, kind;
+  if (strokes === 1)        { name = 'HOLE IN ONE!';   kind = 'ace'; }
+  else if (underBy >= 3)    { name = 'ALBATROSS';       kind = 'eagle'; }
+  else if (underBy === 2)   { name = 'EAGLE';           kind = 'eagle'; }
+  else if (underBy === 1)   { name = 'BIRDIE';          kind = 'birdie'; }
+  else if (underBy === 0)   { name = 'PAR';             kind = 'par'; }
+  else if (overBy === 1)    { name = 'BOGEY';           kind = 'bogey'; }
+  else if (overBy === 2)    { name = 'DOUBLE BOGEY';    kind = 'doublebogey'; }
+  else                      { name = `+${overBy}`;      kind = 'over'; }
+
+  let cash = 0;
+  if (underBy > 0) {
+    cash = PAR_CASH; // base for completing the hole
+    for (let i = 0; i < underBy; i++) {
+      cash += PER_BALL_UNDER[Math.min(i, PER_BALL_UNDER.length - 1)];
+    }
+  } else if (underBy === 0) {
+    cash = PAR_CASH;
+  } else if (overBy === 1) {
+    cash = BOGEY_CASH;
+  }
+
+  return { name, cash, kind, strokes, par, underBy, overBy };
 }
 
 export class Run {

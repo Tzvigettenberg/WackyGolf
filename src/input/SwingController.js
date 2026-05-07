@@ -216,18 +216,20 @@ export class SwingController {
     const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
-    // store the prediction; the visible marker chases it in tick() at a steady
-    // frame-rate so physics-jumps become smooth eases
-    this._predictedRest = traj.rest;
+    // Use the FIRST ground-contact sample as the target — bounces and roll
+    // aren't shown on the minimap so the player has to estimate them. Adds skill.
+    const firstLanding = traj.samples[traj.firstContactIdx] || traj.rest;
+
+    this._predictedRest = firstLanding;
     this.landingMarker.visible = true;
 
-    // minimap consumes both the rest position and the trajectory samples
+    // Minimap gets the airborne-only arc + initial landing point.
     this.onAim({
-      x: traj.rest.x,
-      z: traj.rest.z,
+      x: firstLanding.x,
+      z: firstLanding.z,
       power: launch.power,
       club: launch.club,
-      samples: traj.samples,
+      samples: traj.samples.slice(0, traj.firstContactIdx + 1),
     });
   }
 

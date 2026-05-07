@@ -153,6 +153,48 @@
     #cash-out .cashout-score.eagle, #cash-out .cashout-score.ace { color: #66e0a3; }
     #cash-out .cashout-score.par   { color: #ffffff; }
     #cash-out .cashout-score.bogey, #cash-out .cashout-score.doublebogey, #cash-out .cashout-score.over { color: #ff9b6b; }
+    /* Strokes vs Par ball track */
+    #cash-out .cashout-track {
+      background: rgba(0,0,0,0.25);
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    #cash-out .track-row {
+      display: flex; align-items: center; gap: 10px;
+      font-size: 13px;
+    }
+    #cash-out .track-label {
+      font-size: 11px; opacity: 0.7;
+      letter-spacing: 1px; text-transform: uppercase;
+      width: 56px;
+    }
+    #cash-out .balls {
+      display: flex; align-items: center;
+      gap: 5px;
+      flex: 1; flex-wrap: wrap;
+    }
+    #cash-out .ball {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.18);
+      border: 1.5px solid rgba(255,255,255,0.35);
+      box-sizing: border-box;
+      transform: scale(0.4);
+      opacity: 0;
+      transition: transform 0.18s ease, opacity 0.18s ease;
+    }
+    #cash-out .ball.appeared { transform: scale(1); opacity: 1; }
+    #cash-out .strokes-balls .ball.appeared { background: #66e0a3; border-color: #66e0a3; box-shadow: 0 0 8px rgba(102,224,163,0.5); }
+    #cash-out .strokes-balls .ball.appeared.over { background: #ff6b6b; border-color: #ff6b6b; box-shadow: 0 0 8px rgba(255,107,107,0.5); }
+    #cash-out .par-row .ball { width: 11px; height: 11px; }
+    #cash-out .track-count {
+      font-weight: 800; font-size: 14px;
+      min-width: 22px; text-align: right;
+      opacity: 0.8;
+    }
+    #cash-out .par-row .track-count { opacity: 0.45; }
+
     #cash-out .cashout-lines {
       display: flex; flex-direction: column;
       background: rgba(0,0,0,0.25);
@@ -539,9 +581,23 @@
     <div class="cashout-card">
       <div class="cashout-title">Hole 1 · Par 4</div>
       <div class="cashout-score">PAR</div>
+
+      <div class="cashout-track">
+        <div class="track-row">
+          <span class="track-label">Strokes</span>
+          <span class="balls strokes-balls"></span>
+          <span class="track-count strokes-count">0</span>
+        </div>
+        <div class="track-row par-row">
+          <span class="track-label">Par</span>
+          <span class="balls par-balls"></span>
+          <span class="track-count">—</span>
+        </div>
+      </div>
+
       <div class="cashout-lines">
         <div class="cashout-line line-score">
-          <div class="label">Base payout</div>
+          <div class="label">Score</div>
           <div class="cash">+$0</div>
         </div>
         <div class="cashout-line line-streak">

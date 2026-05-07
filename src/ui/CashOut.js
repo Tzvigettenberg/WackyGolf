@@ -18,7 +18,14 @@ export class CashOut {
     this.titleEl = this.modal.querySelector('.cashout-title');
     this.scoreEl = this.modal.querySelector('.cashout-score');
 
+    // strokes vs par ball track
+    this.strokesBallsEl = this.modal.querySelector('.strokes-balls');
+    this.parBallsEl = this.modal.querySelector('.par-balls');
+    this.strokesCountEl = this.modal.querySelector('.strokes-count');
+    this.parCountEl = this.modal.querySelector('.par-row .track-count');
+
     this.scoreLine = this.modal.querySelector('.line-score');
+    this.scoreLineLabel = this.modal.querySelector('.line-score .label');
     this.scoreValEl = this.modal.querySelector('.line-score .cash');
     this.streakLine = this.modal.querySelector('.line-streak');
     this.streakValEl = this.modal.querySelector('.line-streak .cash');
@@ -46,6 +53,9 @@ export class CashOut {
     this.scoreEl.textContent = score.name;
     this.scoreEl.className = 'cashout-score ' + (score.kind || '');
 
+    // Score line label: e.g., "BIRDIE −1", "PAR", "BOGEY +1"
+    this.scoreLineLabel.textContent = formatScoreLabel(score);
+
     this.btn.disabled = true;
     this.btn.classList.remove('ready');
 
@@ -56,6 +66,9 @@ export class CashOut {
     this.totalEl.textContent = '+$0';
     this.cashFromEl.textContent = `$${cashBefore}`;
     this.cashToEl.textContent = `$${cashBefore}`;
+
+    // Render strokes vs par balls
+    this._renderBalls(score.strokes, score.par);
 
     // Streak line only visible when there's a streak bonus to show
     const showStreak = breakdown.streak > 0;
@@ -72,6 +85,9 @@ export class CashOut {
 
     // ----- animate -----
     let delay = FADE_IN_MS;
+
+    // Strokes balls fade in one by one, with the count incrementing.
+    delay = this._animateBalls(score.strokes, score.par, delay);
 
     this._countUp(this.scoreValEl, 0, breakdown.score, delay);
     delay += STAGGER_MS;
@@ -139,4 +155,60 @@ export class CashOut {
     this._timers = [];
     this._rafs = [];
   }
+
+  _renderBalls(strokes, par) {
+    // Build N stroke balls + M par balls, all hidden initially.
+    this.strokesBallsEl.innerHTML = '';
+    this.parBallsEl.innerHTML = '';
+    this.strokesCountEl.textContent = '0';
+    if (this.parCountEl) this.parCountEl.textContent = `${par}`;
+
+    for (let i = 0; i < strokes; i++) {
+      const b = document.createElement('span');
+      b.className = 'ball' + (i >= par ? ' over' : '');
+      this.strokesBallsEl.appendChild(b);
+    }
+    for (let i = 0; i < par; i++) {
+      const b = document.createElement('span');
+      b.className = 'ball';
+      this.parBallsEl.appendChild(b);
+    }
+  }
+
+  /** Fade balls in sequentially. Returns the delay (ms) at which the
+   *  last ball animation finishes. */
+  _animateBalls(strokes, par, startDelay) {
+    let delay = startDelay;
+    const STROKE_GAP = 160;
+    const PAR_GAP = 60;
+
+    // Strokes — pop in one by one, count ticks up
+    const strokeBalls = this.strokesBallsEl.querySelectorAll('.ball');
+    let count = 0;
+    for (const b of strokeBalls) {
+      this._timers.push(setTimeout(() => {
+        b.classList.add('appeared');
+        count += 1;
+        this.strokesCountEl.textContent = `${count}`;
+      }, delay));
+      delay += STROKE_GAP;
+    }
+
+    // Small gap, then par balls fade in (faster, less drama)
+    delay += 120;
+    const parBalls = this.parBallsEl.querySelectorAll('.ball');
+    for (const b of parBalls) {
+      this._timers.push(setTimeout(() => b.classList.add('appeared'), delay));
+      delay += PAR_GAP;
+    }
+
+    return delay + 120;
+  }
+}
+
+function formatScoreLabel(score) {
+  if (score.kind === 'ace') return score.name;
+  if (score.underBy > 0) return `${score.name} −${score.underBy}`;
+  if (score.underBy === 0) return score.name;
+  return `${score.name} +${score.overBy}`;
 }
