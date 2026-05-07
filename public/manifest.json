@@ -1,0 +1,19 @@
+{
+  "name": "Wacky Golf",
+  "short_name": "Wacky Golf",
+  "description": "Mobile-first 3D golf roguelike",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#87CEEB",
+  "theme_color": "#4CAF50",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
