@@ -23,6 +23,7 @@ import { Collection } from './ui/Collection.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { PauseMenu } from './ui/PauseMenu.js';
 import { CashOut } from './ui/CashOut.js';
+import { Shop } from './ui/Shop.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -136,8 +137,15 @@ updateHUD();
 const cashOut = new CashOut({
   onCashOut: () => {
     cashOut.hide();
-    advanceToNextHole();
+    // Open the Pro Shop. Continue button there will advance the hole.
+    shop.show({ holeName: currentHole && currentHole.name });
   },
+});
+
+// ----- pro shop (Stats tab v1) -----
+const shop = new Shop({
+  run,
+  onContinue: () => advanceToNextHole(),
 });
 
 // ----- collection (hole library) -----
@@ -330,6 +338,8 @@ const swing = new SwingController({
       powerMeter.set(null);
     }
   },
+  // Player Power stat boosts effective club speed.
+  getPowerMultiplier: () => run.powerMultiplier,
 });
 swing.setSurfaces(currentHole.surfaces);
 

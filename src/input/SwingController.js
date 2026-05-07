@@ -21,7 +21,7 @@ const MIN_DRAG_PX = 6;
 const UI_BLOCK_SELECTOR = '#club-selector, #minimap, #hud-top, button';
 
 export class SwingController {
-  constructor({ ball, scene, camera, canvas, bag, onShotFired, onAim }) {
+  constructor({ ball, scene, camera, canvas, bag, onShotFired, onAim, getPowerMultiplier }) {
     this.ball = ball;
     this.scene = scene;
     this.camera = camera;
@@ -29,6 +29,9 @@ export class SwingController {
     this.bag = bag;
     this.onShotFired = onShotFired || (() => {});
     this.onAim = onAim || (() => {});
+    // Player-stat hook: club's effective max-speed is multiplied by this.
+    // Defaults to 1 (no boost) if the host doesn't wire it up.
+    this.getPowerMultiplier = getPowerMultiplier || (() => 1);
 
     // scratch vectors so we don't allocate per frame
     this._camFwd = new Vector3();
@@ -177,7 +180,8 @@ export class SwingController {
     if (dragLen < MIN_DRAG_PX) return null;
     const club = this.bag.active;
     const power = Math.min(dragLen / MAX_DRAG_PX, 1);
-    const speed = power * club.maxSpeed;
+    // player Power stat scales the club's effective max speed
+    const speed = power * club.maxSpeed * this.getPowerMultiplier();
 
     // camera-relative basis: ball fires in the camera's "forward" direction
     // when the player drags DOWN on screen, regardless of camera yaw.

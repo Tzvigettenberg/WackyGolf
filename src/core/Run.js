@@ -80,8 +80,42 @@ export class Run {
     // Consecutive birdies/eagles/aces. Resets on bogey or worse. Drives the
     // streak bonus shown on the cash-out screen.
     this.birdieStreak = 0;
+    // Player stat levels. Power is wired into swing speed; Accuracy/Touch/Luck
+    // are placeholders for upcoming systems (tempo bar, shop rarity bias).
+    this.stats = {
+      power: 5, accuracy: 5, touch: 5, luck: 1,
+    };
 
     this._listeners = [];
+  }
+
+  // ---- stat upgrades ----
+
+  /** Cost to bump `name` from level N to N+1 — `$5 + N²` per the GDD. */
+  statUpgradeCost(name) {
+    const lvl = this.stats[name] ?? 1;
+    return 5 + lvl * lvl;
+  }
+  statMax(name) {
+    return name === 'luck' ? 5 : 10;
+  }
+  canUpgrade(name) {
+    return this.stats[name] !== undefined && this.stats[name] < this.statMax(name);
+  }
+  /** Returns true on success, false if the player can't afford or stat is maxed. */
+  upgradeStat(name) {
+    if (!this.canUpgrade(name)) return false;
+    const cost = this.statUpgradeCost(name);
+    if (this.cash < cost) return false;
+    this.cash -= cost;
+    this.stats[name] = (this.stats[name] ?? 1) + 1;
+    this._emit();
+    return true;
+  }
+
+  /** +5% distance per level above 1 — wired into SwingController. */
+  get powerMultiplier() {
+    return 1 + 0.05 * Math.max(0, (this.stats.power || 1) - 1);
   }
 
   onChange(fn) {
@@ -173,6 +207,7 @@ export class Run {
     this.cash = STARTING_CASH;
     this.holeNumber = 1;
     this.birdieStreak = 0;
+    this.stats = { power: 5, accuracy: 5, touch: 5, luck: 1 };
     this.startHole(meta);
   }
 

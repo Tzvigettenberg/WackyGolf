@@ -117,6 +117,138 @@
     #title-screen .center button:active { transform: scale(0.97); }
     #title-play   { background: white; color: #111; }
     #title-resume { background: #4caf50; color: white; }
+    /* Pro Shop — opens after Cash Out */
+    #shop {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(8, 28, 18, 0.88);
+      backdrop-filter: blur(6px);
+      z-index: 65;
+      font-family: inherit;
+      color: white;
+      padding: 16px;
+    }
+    #shop.shown { display: flex; }
+    #shop .shop-card {
+      width: 100%; max-width: 420px; max-height: 88vh;
+      background: linear-gradient(180deg, #2a4a36 0%, #1f3a2a 100%);
+      border: 1.5px solid rgba(255,255,255,0.15);
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; gap: 10px;
+      overflow: hidden;
+    }
+    #shop .shop-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0 4px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    #shop .shop-title {
+      margin: 0;
+      font-size: 16px; letter-spacing: 1.5px; text-transform: uppercase;
+      font-weight: 800;
+    }
+    #shop .shop-cash {
+      font-size: 18px; font-weight: 900;
+      color: #ffd86b;
+    }
+    #shop .shop-tabs {
+      display: flex; gap: 6px;
+    }
+    #shop .shop-tab {
+      flex: 1;
+      padding: 8px 12px;
+      background: rgba(255,255,255,0.05);
+      border: 1.5px solid rgba(255,255,255,0.12);
+      color: white;
+      border-radius: 8px;
+      font-size: 12px; font-weight: 800; letter-spacing: 1px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+      transition: background 0.1s ease;
+    }
+    #shop .shop-tab:disabled {
+      opacity: 0.4; cursor: not-allowed;
+    }
+    #shop .shop-tab.active {
+      background: rgba(255,216,107,0.18);
+      border-color: #ffd86b;
+      color: #ffd86b;
+    }
+    #shop .shop-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 2px;
+      min-height: 0;
+    }
+    #shop .stat-row {
+      display: flex; justify-content: space-between; align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      background: rgba(0,0,0,0.22);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      transition: transform 0.18s ease, background 0.18s ease;
+    }
+    #shop .stat-row.just-upgraded {
+      background: rgba(255,216,107,0.25);
+      transform: scale(1.02);
+    }
+    #shop .stat-info { flex: 1; min-width: 0; }
+    #shop .stat-name {
+      font-size: 14px; font-weight: 800; letter-spacing: 0.5px;
+    }
+    #shop .stat-desc {
+      font-size: 11px; opacity: 0.6; margin-top: 2px;
+    }
+    #shop .stat-meta {
+      display: flex; flex-direction: column; align-items: flex-end; gap: 4px;
+    }
+    #shop .stat-level {
+      font-size: 11px; opacity: 0.7;
+      letter-spacing: 0.5px;
+    }
+    #shop .upgrade-btn {
+      pointer-events: auto;
+      min-width: 64px;
+      padding: 7px 12px;
+      background: #ffd86b;
+      color: #1f3a2a;
+      border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 900; letter-spacing: 0.5px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.08s ease, opacity 0.15s ease;
+    }
+    #shop .upgrade-btn:active { transform: scale(0.95); }
+    #shop .upgrade-btn:disabled,
+    #shop .upgrade-btn.cant-afford {
+      background: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.5);
+      cursor: not-allowed;
+    }
+    #shop .upgrade-btn.maxed {
+      background: rgba(102,224,163,0.2);
+      color: #66e0a3;
+      border: 1.5px solid #66e0a3;
+    }
+    #shop .shop-continue {
+      pointer-events: auto;
+      padding: 14px 22px;
+      font-size: 16px; font-weight: 900; letter-spacing: 1.5px;
+      background: #ffd86b;
+      color: #1f3a2a;
+      border: none; border-radius: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+      transition: transform 0.08s ease;
+    }
+    #shop .shop-continue:active { transform: scale(0.97); }
+
     /* Cash-Out screen — between hole completion and the next hole / shop */
     #cash-out {
       position: fixed; inset: 0;
@@ -618,6 +750,24 @@
     </div>
     <button class="play-again" id="play-again-btn" type="button">Play Again</button>
   </div>
+  <div id="shop" role="dialog" aria-modal="true" aria-label="Pro Shop">
+    <div class="shop-card">
+      <header class="shop-header">
+        <h2 class="shop-title">Pro Shop</h2>
+        <div class="shop-cash">$0</div>
+      </header>
+      <nav class="shop-tabs">
+        <button class="shop-tab active" type="button" data-tab="stats">Stats</button>
+        <button class="shop-tab" type="button" data-tab="clubs" disabled>Clubs</button>
+        <button class="shop-tab" type="button" data-tab="items" disabled>Items</button>
+      </nav>
+      <main class="shop-body">
+        <div class="tab-content stats-tab"></div>
+      </main>
+      <button class="shop-continue" type="button">Continue ▸</button>
+    </div>
+  </div>
+
   <div id="cash-out" role="dialog" aria-modal="true" aria-label="Cash out">
     <div class="cashout-card">
       <div class="cashout-title">Hole 1 · Par 4</div>
