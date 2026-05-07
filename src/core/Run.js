@@ -31,6 +31,9 @@ export class Run {
     this.holeMeta = { par: DEFAULT_PAR, strokeLimit: DEFAULT_PAR + DEFAULT_LEEWAY };
     this.status = 'playing'; // 'playing' | 'holed' | 'busted'
     this.lastResult = null;
+    // Consecutive birdies/eagles/aces. Resets on bogey or worse. Drives the
+    // streak bonus shown on the cash-out screen.
+    this.birdieStreak = 0;
 
     this._listeners = [];
   }
@@ -50,15 +53,44 @@ export class Run {
     this._emit();
   }
 
-  /** Ball went in the cup. Returns the score result for display. */
+  /**
+   * Ball went in the cup. Returns the score result + breakdown for the
+   * cash-out screen, and applies the totals to run.cash.
+   */
   onHoled() {
     if (this.status !== 'playing') return null;
     this.status = 'holed';
+
     const result = computeScore(this.strokes, this.holeMeta.par);
-    this.cash += result.cash;
-    this.lastResult = result;
+
+    // streak: +$2 per consecutive birdie/eagle/ace, resets on par-or-worse
+    const isBirdieOrBetter = result.kind === 'birdie' || result.kind === 'eagle' || result.kind === 'ace';
+    if (isBirdieOrBetter) this.birdieStreak += 1;
+    else                  this.birdieStreak = 0;
+    const streakCash = isBirdieOrBetter ? this.birdieStreak * 2 : 0;
+
+    // interest: $1 per $5 on the post-payout balance, capped at $5
+    const provisional = this.cash + result.cash + streakCash;
+    const interestCash = Math.min(5, Math.floor(provisional / 5));
+
+    const total = result.cash + streakCash + interestCash;
+    const cashBefore = this.cash;
+    this.cash += total;
+
+    this.lastResult = {
+      ...result,
+      breakdown: {
+        score: result.cash,
+        streak: streakCash,
+        interest: interestCash,
+        total,
+      },
+      cashBefore,
+      cashAfter: this.cash,
+      streakCount: this.birdieStreak,
+    };
     this._emit();
-    return result;
+    return this.lastResult;
   }
 
   /** Ball stopped without going in. Returns true if the run is now busted. */
@@ -92,6 +124,7 @@ export class Run {
   resetRun(meta) {
     this.cash = STARTING_CASH;
     this.holeNumber = 1;
+    this.birdieStreak = 0;
     this.startHole(meta);
   }
 

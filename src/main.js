@@ -22,6 +22,7 @@ import { templateForHole, holeMetaFromTemplate, HOLES } from './content/holes.js
 import { Collection } from './ui/Collection.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { PauseMenu } from './ui/PauseMenu.js';
+import { CashOut } from './ui/CashOut.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -130,6 +131,14 @@ run.onChange(() => {
   updateHUD();
 });
 updateHUD();
+
+// ----- cash-out screen (after each hole) -----
+const cashOut = new CashOut({
+  onCashOut: () => {
+    cashOut.hide();
+    advanceToNextHole();
+  },
+});
 
 // ----- collection (hole library) -----
 const collection = new Collection({
@@ -377,9 +386,20 @@ physics.onHoled = () => {
   const result = run.onHoled();
   if (!result) return;
   swing.setEnabled(false);
-  showScoreBanner(result.name, result.cash);
   freezeAndFadeDistance();
-  setTimeout(advanceToNextHole, 1900);
+  // Brief delay so the player gets the satisfaction of seeing the ball
+  // drop into the cup before the cash-out overlay appears.
+  setTimeout(() => {
+    cashOut.show({
+      holeName: currentHole.name,
+      par: run.holeMeta.par,
+      score: result,
+      breakdown: result.breakdown,
+      cashBefore: result.cashBefore,
+      cashAfter: result.cashAfter,
+      streakCount: result.streakCount,
+    });
+  }, 700);
 };
 
 physics.onCameToRest = () => {

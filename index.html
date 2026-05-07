@@ -117,6 +117,88 @@
     #title-screen .center button:active { transform: scale(0.97); }
     #title-play   { background: white; color: #111; }
     #title-resume { background: #4caf50; color: white; }
+    /* Cash-Out screen — between hole completion and the next hole / shop */
+    #cash-out {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(8, 28, 18, 0.85);
+      backdrop-filter: blur(6px);
+      z-index: 65;
+      font-family: inherit;
+      color: white;
+      padding: 16px;
+    }
+    #cash-out.shown { display: flex; }
+    #cash-out .cashout-card {
+      width: 100%; max-width: 380px;
+      background: linear-gradient(180deg, #2a4a36 0%, #1f3a2a 100%);
+      border: 1.5px solid rgba(255,255,255,0.15);
+      border-radius: 18px;
+      padding: 18px 18px 16px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    #cash-out .cashout-title {
+      font-size: 12px; letter-spacing: 1.5px; opacity: 0.7;
+      text-align: center; text-transform: uppercase;
+    }
+    #cash-out .cashout-score {
+      text-align: center;
+      font-size: 38px; font-weight: 900; letter-spacing: 2px;
+      line-height: 1;
+      margin: 4px 0 8px;
+      color: #ffd86b;
+    }
+    #cash-out .cashout-score.eagle, #cash-out .cashout-score.ace { color: #66e0a3; }
+    #cash-out .cashout-score.par   { color: #ffffff; }
+    #cash-out .cashout-score.bogey, #cash-out .cashout-score.doublebogey, #cash-out .cashout-score.over { color: #ff9b6b; }
+    #cash-out .cashout-lines {
+      display: flex; flex-direction: column;
+      background: rgba(0,0,0,0.25);
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    #cash-out .cashout-line {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 6px 0;
+      border-bottom: 1px dashed rgba(255,255,255,0.12);
+      font-size: 14px;
+    }
+    #cash-out .cashout-line:last-child { border-bottom: none; }
+    #cash-out .cashout-line .label { opacity: 0.85; }
+    #cash-out .cashout-line .count { font-size: 11px; opacity: 0.6; margin-left: 6px; }
+    #cash-out .cashout-line .cash { font-weight: 800; color: #c8f7c8; }
+    #cash-out .cashout-total {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 8px 12px;
+      font-size: 16px; font-weight: 900;
+    }
+    #cash-out .cashout-total .cash { color: #ffd86b; font-size: 20px; }
+    #cash-out .cashout-cash {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px;
+      padding: 6px 0 10px;
+      font-size: 16px; font-weight: 800;
+    }
+    #cash-out .cashout-cash .from { opacity: 0.55; }
+    #cash-out .cashout-cash .arrow { opacity: 0.45; font-size: 18px; }
+    #cash-out .cashout-cash .to    { color: #66e0a3; font-size: 22px; }
+    #cash-out .cashout-btn {
+      pointer-events: auto;
+      padding: 14px 22px;
+      font-size: 16px; font-weight: 900; letter-spacing: 1.5px;
+      background: #ffd86b;
+      color: #1f3a2a;
+      border: none; border-radius: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+      transition: transform 0.08s ease, opacity 0.15s ease;
+    }
+    #cash-out .cashout-btn:disabled { opacity: 0.45; cursor: default; }
+    #cash-out .cashout-btn.ready:active { transform: scale(0.97); }
+
     /* Pause menu — small centered card mid-game */
     #pause-menu {
       position: fixed; inset: 0;
@@ -453,6 +535,37 @@
     </div>
     <button class="play-again" id="play-again-btn" type="button">Play Again</button>
   </div>
+  <div id="cash-out" role="dialog" aria-modal="true" aria-label="Cash out">
+    <div class="cashout-card">
+      <div class="cashout-title">Hole 1 · Par 4</div>
+      <div class="cashout-score">PAR</div>
+      <div class="cashout-lines">
+        <div class="cashout-line line-score">
+          <div class="label">Base payout</div>
+          <div class="cash">+$0</div>
+        </div>
+        <div class="cashout-line line-streak">
+          <div class="label">Streak bonus<span class="count"></span></div>
+          <div class="cash">+$0</div>
+        </div>
+        <div class="cashout-line line-interest">
+          <div class="label">Interest</div>
+          <div class="cash">+$0</div>
+        </div>
+      </div>
+      <div class="cashout-total">
+        <div class="label">Total</div>
+        <div class="cash">+$0</div>
+      </div>
+      <div class="cashout-cash">
+        <div class="from">$0</div>
+        <div class="arrow">→</div>
+        <div class="to">$0</div>
+      </div>
+      <button class="cashout-btn" type="button">Cash Out</button>
+    </div>
+  </div>
+
   <div id="pause-menu" role="dialog" aria-modal="true" aria-label="Paused">
     <div class="pause-card">
       <h2>Paused</h2>
