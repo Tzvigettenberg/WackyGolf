@@ -1,14 +1,20 @@
-// CashOut — Phase 4 prep
+// CashOut — Phase 4 prep (v2: single-row stroke track)
 //
-// Full-screen "you sunk the hole, here's your money" overlay. Counts up
-// each line item satisfyingly (base + streak + interest), totals them, then
-// animates the cash counter from old → new. Player taps Cash Out to advance.
-// Later this hooks into the Pro Shop instead of going straight to the next hole.
+// Full-screen overlay shown after holing out. One row of stroke-limit circles:
+//   green   = stroke used (within par)
+//   red     = stroke used past par
+//   gold    = saved stroke (under par bonus)
+//   silver  = saved stroke (within leeway)
+//
+// Breakdown lines spell out where the cash comes from:
+//   par credit, under par bonus, strokes-saved bonus, streak, interest, total
 
 const FADE_IN_MS  = 220;
 const COUNT_MS    = 380;
 const STAGGER_MS  = 380;
 const CASH_MS     = 700;
+const STROKE_GAP  = 160;
+const SAVED_GAP   = 130;
 
 export class CashOut {
   constructor({ onCashOut } = {}) {
@@ -18,15 +24,20 @@ export class CashOut {
     this.titleEl = this.modal.querySelector('.cashout-title');
     this.scoreEl = this.modal.querySelector('.cashout-score');
 
-    // strokes vs par ball track
-    this.strokesBallsEl = this.modal.querySelector('.strokes-balls');
-    this.parBallsEl = this.modal.querySelector('.par-balls');
+    // single-row stroke track
+    this.strokeBallsEl = this.modal.querySelector('.stroke-balls');
     this.strokesCountEl = this.modal.querySelector('.strokes-count');
-    this.parCountEl = this.modal.querySelector('.par-row .track-count');
 
-    this.scoreLine = this.modal.querySelector('.line-score');
-    this.scoreLineLabel = this.modal.querySelector('.line-score .label');
-    this.scoreValEl = this.modal.querySelector('.line-score .cash');
+    // breakdown lines
+    this.parLine    = this.modal.querySelector('.line-par');
+    this.parValEl   = this.modal.querySelector('.line-par .cash');
+    this.underLine  = this.modal.querySelector('.line-under');
+    this.underValEl = this.modal.querySelector('.line-under .cash');
+    this.underCountEl = this.modal.querySelector('.line-under .count');
+    this.leewayLine = this.modal.querySelector('.line-leeway');
+    this.leewayValEl = this.modal.querySelector('.line-leeway .cash');
+    this.leewayCountEl = this.modal.querySelector('.line-leeway .count');
+
     this.streakLine = this.modal.querySelector('.line-streak');
     this.streakValEl = this.modal.querySelector('.line-streak .cash');
     this.streakCountEl = this.modal.querySelector('.line-streak .count');
@@ -53,63 +64,83 @@ export class CashOut {
     this.scoreEl.textContent = score.name;
     this.scoreEl.className = 'cashout-score ' + (score.kind || '');
 
-    // Score line label: e.g., "BIRDIE −1", "PAR", "BOGEY +1"
-    this.scoreLineLabel.textContent = formatScoreLabel(score);
+    // Reset breakdown text
+    this.parValEl.textContent    = '+$0';
+    this.underValEl.textContent  = '+$0';
+    this.leewayValEl.textContent = '+$0';
+    this.streakValEl.textContent = '+$0';
+    this.interestValEl.textContent = '+$0';
+    this.totalEl.textContent     = '+$0';
+    this.cashFromEl.textContent  = `$${cashBefore}`;
+    this.cashToEl.textContent    = `$${cashBefore}`;
+
+    // Show/hide breakdown lines based on what applies
+    const showPar     = breakdown.parCredit > 0;
+    const showUnder   = breakdown.underPar > 0;
+    const showLeeway  = breakdown.leeway > 0;
+    const showStreak  = breakdown.streak > 0;
+    const showInterest = breakdown.interest > 0;
+    this.parLine.style.display    = showPar ? '' : 'none';
+    this.underLine.style.display  = showUnder ? '' : 'none';
+    this.leewayLine.style.display = showLeeway ? '' : 'none';
+    this.streakLine.style.display = showStreak ? '' : 'none';
+    this.interestLine.style.display = showInterest ? '' : 'none';
+    if (showUnder)  this.underCountEl.textContent  = `(×${score.underParCircles})`;
+    if (showLeeway) this.leewayCountEl.textContent = `(×${score.leewaySaved})`;
+    if (showStreak) this.streakCountEl.textContent = `×${streakCount}`;
 
     this.btn.disabled = true;
     this.btn.classList.remove('ready');
 
-    // Reset displayed numbers
-    this.scoreValEl.textContent = '+$0';
-    this.streakValEl.textContent = '+$0';
-    this.interestValEl.textContent = '+$0';
-    this.totalEl.textContent = '+$0';
-    this.cashFromEl.textContent = `$${cashBefore}`;
-    this.cashToEl.textContent = `$${cashBefore}`;
-
-    // Render strokes vs par balls
-    this._renderBalls(score.strokes, score.par);
-
-    // Streak line only visible when there's a streak bonus to show
-    const showStreak = breakdown.streak > 0;
-    this.streakLine.style.display = showStreak ? '' : 'none';
-    if (showStreak) {
-      this.streakCountEl.textContent = `×${streakCount}`;
-    }
-
-    // Interest line only visible when interest is non-zero
-    const showInterest = breakdown.interest > 0;
-    this.interestLine.style.display = showInterest ? '' : 'none';
+    // Render balls + counter text
+    this._renderBalls(score.strokes, score.par, score.strokeLimit);
+    this.strokesCountEl.textContent = `${score.strokes}/${score.strokeLimit}`;
 
     this.modal.classList.add('shown');
 
-    // ----- animate -----
+    // ----- Animate in sequence -----
     let delay = FADE_IN_MS;
+    delay = this._animateBalls(score, delay);
 
-    // Strokes balls fade in one by one, with the count incrementing.
-    delay = this._animateBalls(score.strokes, score.par, delay);
-
-    this._countUp(this.scoreValEl, 0, breakdown.score, delay);
-    delay += STAGGER_MS;
-
+    // par credit
+    delay += 80;
+    if (showPar) {
+      this._countUp(this.parValEl, 0, breakdown.parCredit, delay);
+      delay += STAGGER_MS;
+    }
+    // under-par bonus
+    if (showUnder) {
+      this._countUp(this.underValEl, 0, breakdown.underPar, delay);
+      delay += STAGGER_MS;
+    }
+    // leeway-saved bonus
+    if (showLeeway) {
+      this._countUp(this.leewayValEl, 0, breakdown.leeway, delay);
+      delay += STAGGER_MS;
+    }
+    // streak
     if (showStreak) {
       this._countUp(this.streakValEl, 0, breakdown.streak, delay);
       delay += STAGGER_MS;
     }
+    // interest
     if (showInterest) {
       this._countUp(this.interestValEl, 0, breakdown.interest, delay);
       delay += STAGGER_MS;
     }
 
+    // total
     delay += 100;
     this._countUp(this.totalEl, 0, breakdown.total, delay);
     delay += COUNT_MS;
 
+    // cash counter
     this._timers.push(setTimeout(() => {
       this._countCash(this.cashToEl, cashBefore, cashAfter, CASH_MS);
     }, delay));
     delay += CASH_MS + 200;
 
+    // enable button
     this._timers.push(setTimeout(() => {
       this.btn.disabled = false;
       this.btn.classList.add('ready');
@@ -122,6 +153,55 @@ export class CashOut {
   }
 
   // ----- internals -----
+
+  _renderBalls(strokes, par, strokeLimit) {
+    this.strokeBallsEl.innerHTML = '';
+    // Total slots = strokeLimit OR strokes if they busted past it (defensive).
+    const total = Math.max(strokeLimit, strokes);
+    for (let i = 0; i < total; i++) {
+      const b = document.createElement('span');
+      b.className = 'ball';
+      // visual divider after the par-th ball
+      if (i === par - 1) b.classList.add('par-edge');
+      this.strokeBallsEl.appendChild(b);
+    }
+  }
+
+  _animateBalls(score, startDelay) {
+    let delay = startDelay;
+    const balls = Array.from(this.strokeBallsEl.querySelectorAll('.ball'));
+    const { strokes, par, strokeLimit } = score;
+
+    // Phase 1: fill in strokes one by one (green, or red if past par)
+    let count = 0;
+    for (let i = 0; i < Math.min(strokes, balls.length); i++) {
+      this._timers.push(setTimeout(() => {
+        balls[i].classList.add(i >= par ? 'over' : 'used');
+        count += 1;
+        this.strokesCountEl.textContent = `${count}/${strokeLimit}`;
+      }, delay));
+      delay += STROKE_GAP;
+    }
+
+    // Pause, then start awarding savings
+    delay += 220;
+
+    // Phase 2: glow saved-under-par circles (positions strokes..par-1)
+    // — each gold ball is a "saved" stroke under par. Slightly slower so
+    // each one feels like an event.
+    for (let i = strokes; i < par; i++) {
+      this._timers.push(setTimeout(() => balls[i].classList.add('saved-par'), delay));
+      delay += SAVED_GAP + 30;
+    }
+
+    // Phase 3: glow saved-leeway circles (positions max(strokes,par)..limit-1)
+    for (let i = Math.max(strokes, par); i < strokeLimit; i++) {
+      this._timers.push(setTimeout(() => balls[i].classList.add('saved-leeway'), delay));
+      delay += SAVED_GAP - 20;
+    }
+
+    return delay + 80;
+  }
 
   _countUp(el, from, to, delayMs) {
     this._timers.push(setTimeout(() => {
@@ -155,60 +235,4 @@ export class CashOut {
     this._timers = [];
     this._rafs = [];
   }
-
-  _renderBalls(strokes, par) {
-    // Build N stroke balls + M par balls, all hidden initially.
-    this.strokesBallsEl.innerHTML = '';
-    this.parBallsEl.innerHTML = '';
-    this.strokesCountEl.textContent = '0';
-    if (this.parCountEl) this.parCountEl.textContent = `${par}`;
-
-    for (let i = 0; i < strokes; i++) {
-      const b = document.createElement('span');
-      b.className = 'ball' + (i >= par ? ' over' : '');
-      this.strokesBallsEl.appendChild(b);
-    }
-    for (let i = 0; i < par; i++) {
-      const b = document.createElement('span');
-      b.className = 'ball';
-      this.parBallsEl.appendChild(b);
-    }
-  }
-
-  /** Fade balls in sequentially. Returns the delay (ms) at which the
-   *  last ball animation finishes. */
-  _animateBalls(strokes, par, startDelay) {
-    let delay = startDelay;
-    const STROKE_GAP = 160;
-    const PAR_GAP = 60;
-
-    // Strokes — pop in one by one, count ticks up
-    const strokeBalls = this.strokesBallsEl.querySelectorAll('.ball');
-    let count = 0;
-    for (const b of strokeBalls) {
-      this._timers.push(setTimeout(() => {
-        b.classList.add('appeared');
-        count += 1;
-        this.strokesCountEl.textContent = `${count}`;
-      }, delay));
-      delay += STROKE_GAP;
-    }
-
-    // Small gap, then par balls fade in (faster, less drama)
-    delay += 120;
-    const parBalls = this.parBallsEl.querySelectorAll('.ball');
-    for (const b of parBalls) {
-      this._timers.push(setTimeout(() => b.classList.add('appeared'), delay));
-      delay += PAR_GAP;
-    }
-
-    return delay + 120;
-  }
-}
-
-function formatScoreLabel(score) {
-  if (score.kind === 'ace') return score.name;
-  if (score.underBy > 0) return `${score.name} −${score.underBy}`;
-  if (score.underBy === 0) return score.name;
-  return `${score.name} +${score.overBy}`;
 }

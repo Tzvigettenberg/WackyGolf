@@ -89,32 +89,34 @@ export const HOLES = [
     ],
   },
 
-  // -------------------- HOLE 3: Island Green (par 3, ~95 yd) --------------------
+  // -------------------- HOLE 3: Island Green (par 3, ~40 yd carry) --------------------
   {
     id: 'island-green',
     name: 'Island Green',
     par: 3,
-    teePosition: new Vector3(0, 0, 55),
-    cupPosition: new Vector3(0, 0, -40),
+    teePosition: new Vector3(0, 0, 35),
+    cupPosition: new Vector3(0, 0, -5),
     fairway: [
-      // small tee strip — the rest is water
-      { cx: 0, cz: 50, w: 14, h: 16 },
+      // tee strip — the rest is water on all sides of the green
+      { cx: 0, cz: 32, w: 14, h: 14 },
     ],
-    green:  { cx: 0, cz: -40, radius: 6 },
-    bounds: { minX: -28, maxX: 28, minZ: -58, maxZ: 65 },
+    green:  { cx: 0, cz: -5, radius: 8 },
+    bounds: { minX: -28, maxX: 28, minZ: -40, maxZ: 50 },
     trees: [
-      [-16, 60, 1.0], [16, 60, 1.0],
-      [-22, 35, 1.0], [22, 35, 1.0],
-      [-25,  0, 1.1], [25,  0, 1.1],
-      [-22, -45, 1.0], [22, -45, 1.0],
-      [-15, -55, 0.9], [15, -55, 0.9],
+      // ring of trees framing the lake
+      [-22, 30, 1.0], [22, 30, 1.0],
+      [-26,  0, 1.1], [26,  0, 1.1],
+      [-22, -30, 1.0], [22, -30, 1.0],
+      [-18, -40, 0.9], [18, -40, 0.9],
+      [-22, 45, 0.9], [22, 45, 0.9],
     ],
     bunkers: [
-      { cx: 4, cz: -43, radius: 1.5 },   // tiny greenside trap
+      { cx: 5, cz: -7, radius: 1.5 },     // tiny pot bunker on the island green
     ],
     water: [
-      // large pond between tee and green; the green is its own island
-      { type: 'rect', cx: 0, cz: 5, w: 38, h: 70 },
+      // wide rectangular lake — the green sits as a true island within it.
+      // Surface priority (green > water) means the green still reads as green.
+      { type: 'rect', cx: 0, cz: 0, w: 44, h: 50 },
     ],
   },
 

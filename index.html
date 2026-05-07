@@ -153,12 +153,12 @@
     #cash-out .cashout-score.eagle, #cash-out .cashout-score.ace { color: #66e0a3; }
     #cash-out .cashout-score.par   { color: #ffffff; }
     #cash-out .cashout-score.bogey, #cash-out .cashout-score.doublebogey, #cash-out .cashout-score.over { color: #ff9b6b; }
-    /* Strokes vs Par ball track */
+    /* Stroke track — single row of stroke-limit circles */
     #cash-out .cashout-track {
       background: rgba(0,0,0,0.25);
       border-radius: 10px;
       padding: 10px 12px;
-      display: flex; flex-direction: column; gap: 6px;
+      display: flex; flex-direction: column; gap: 8px;
     }
     #cash-out .track-row {
       display: flex; align-items: center; gap: 10px;
@@ -171,29 +171,70 @@
     }
     #cash-out .balls {
       display: flex; align-items: center;
-      gap: 5px;
+      gap: 4px;
       flex: 1; flex-wrap: wrap;
     }
     #cash-out .ball {
-      width: 14px; height: 14px;
+      width: 13px; height: 13px;
       border-radius: 50%;
-      background: rgba(255,255,255,0.18);
-      border: 1.5px solid rgba(255,255,255,0.35);
+      background: rgba(255,255,255,0.10);
+      border: 1.5px solid rgba(255,255,255,0.22);
       box-sizing: border-box;
-      transform: scale(0.4);
-      opacity: 0;
-      transition: transform 0.18s ease, opacity 0.18s ease;
+      transition: background 0.2s ease, border-color 0.2s ease,
+                  box-shadow 0.2s ease, transform 0.18s ease;
     }
-    #cash-out .ball.appeared { transform: scale(1); opacity: 1; }
-    #cash-out .strokes-balls .ball.appeared { background: #66e0a3; border-color: #66e0a3; box-shadow: 0 0 8px rgba(102,224,163,0.5); }
-    #cash-out .strokes-balls .ball.appeared.over { background: #ff6b6b; border-color: #ff6b6b; box-shadow: 0 0 8px rgba(255,107,107,0.5); }
-    #cash-out .par-row .ball { width: 11px; height: 11px; }
+    /* divider between par and leeway zones */
+    #cash-out .ball.par-edge {
+      margin-right: 8px;
+      position: relative;
+    }
+    #cash-out .ball.par-edge::after {
+      content: '';
+      position: absolute; right: -6px; top: -3px; bottom: -3px;
+      width: 1px; background: rgba(255,255,255,0.35);
+    }
+    #cash-out .ball.used {
+      background: #66e0a3; border-color: #66e0a3;
+      box-shadow: 0 0 6px rgba(102,224,163,0.55);
+      transform: scale(1.05);
+    }
+    #cash-out .ball.over {
+      background: #ff6b6b; border-color: #ff6b6b;
+      box-shadow: 0 0 6px rgba(255,107,107,0.55);
+      transform: scale(1.05);
+    }
+    #cash-out .ball.saved-par {
+      background: #ffd86b; border-color: #ffd86b;
+      box-shadow: 0 0 10px rgba(255,216,107,0.7);
+      transform: scale(1.1);
+    }
+    #cash-out .ball.saved-leeway {
+      background: rgba(255,255,255,0.55);
+      border-color: rgba(255,255,255,0.7);
+      box-shadow: 0 0 5px rgba(255,255,255,0.3);
+    }
     #cash-out .track-count {
-      font-weight: 800; font-size: 14px;
-      min-width: 22px; text-align: right;
-      opacity: 0.8;
+      font-weight: 800; font-size: 13px;
+      min-width: 38px; text-align: right;
+      opacity: 0.85;
     }
-    #cash-out .par-row .track-count { opacity: 0.45; }
+
+    /* Legend below the track */
+    #cash-out .track-legend {
+      display: flex; gap: 14px; flex-wrap: wrap;
+      font-size: 10px; opacity: 0.65;
+      letter-spacing: 0.5px;
+    }
+    #cash-out .track-legend .legend-item {
+      display: inline-flex; align-items: center; gap: 4px;
+    }
+    #cash-out .track-legend .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      display: inline-block;
+    }
+    #cash-out .track-legend .dot-used { background: #66e0a3; }
+    #cash-out .track-legend .dot-saved-par { background: #ffd86b; }
+    #cash-out .track-legend .dot-saved-leeway { background: rgba(255,255,255,0.55); }
 
     #cash-out .cashout-lines {
       display: flex; flex-direction: column;
@@ -585,19 +626,27 @@
       <div class="cashout-track">
         <div class="track-row">
           <span class="track-label">Strokes</span>
-          <span class="balls strokes-balls"></span>
-          <span class="track-count strokes-count">0</span>
+          <span class="balls stroke-balls"></span>
+          <span class="track-count strokes-count">0/0</span>
         </div>
-        <div class="track-row par-row">
-          <span class="track-label">Par</span>
-          <span class="balls par-balls"></span>
-          <span class="track-count">—</span>
+        <div class="track-legend">
+          <span class="legend-item"><span class="dot dot-used"></span>used</span>
+          <span class="legend-item"><span class="dot dot-saved-par"></span>under par</span>
+          <span class="legend-item"><span class="dot dot-saved-leeway"></span>saved stroke</span>
         </div>
       </div>
 
       <div class="cashout-lines">
-        <div class="cashout-line line-score">
-          <div class="label">Score</div>
+        <div class="cashout-line line-par">
+          <div class="label">Par credit</div>
+          <div class="cash">+$0</div>
+        </div>
+        <div class="cashout-line line-under">
+          <div class="label">Under par <span class="count"></span></div>
+          <div class="cash">+$0</div>
+        </div>
+        <div class="cashout-line line-leeway">
+          <div class="label">Strokes saved <span class="count"></span></div>
           <div class="cash">+$0</div>
         </div>
         <div class="cashout-line line-streak">

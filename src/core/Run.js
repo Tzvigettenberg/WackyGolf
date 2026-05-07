@@ -12,17 +12,25 @@ const DEFAULT_PAR = 4;
 const DEFAULT_LEEWAY = 4;   // stroke limit = par + leeway
 
 /**
- * Score → cash payout. The cash is built up per under-par stroke so the
- * cash-out screen can count up "balls" with each one paying more than the
- * last. Returns strokes/par/underBy so the screen can render the visual.
+ * Score → cash payout, broken into three buckets so the cash-out screen
+ * can count them up visually:
+ *
+ *   parCredit   — flat bonus for completing the hole (par-or-better $5, bogey $2)
+ *   underParCash — cumulative payout for each under-par circle ($10, $15, $25, ...)
+ *   leewayCash   — flat $5 per stroke saved against the stroke limit
+ *
+ * Returns enough metadata for the visual:
+ *   strokes, par, strokeLimit, underBy, overBy, underParCircles, leewaySaved
  */
 const PER_BALL_UNDER = [10, 15, 25, 40, 60]; // 1st, 2nd, 3rd, ... under par
-const PAR_CASH = 5;
-const BOGEY_CASH = 2;
+const PER_LEEWAY = 5;
+const PAR_CREDIT = 5;
+const BOGEY_CREDIT = 2;
 
-export function computeScore(strokes, par) {
-  const overBy = strokes - par;        // positive = over par
-  const underBy = -overBy;             // positive = under par
+export function computeScore(strokes, par, strokeLimit) {
+  const limit = strokeLimit || (par + DEFAULT_LEEWAY);
+  const overBy = strokes - par;
+  const underBy = -overBy;
 
   let name, kind;
   if (strokes === 1)        { name = 'HOLE IN ONE!';   kind = 'ace'; }
@@ -34,19 +42,31 @@ export function computeScore(strokes, par) {
   else if (overBy === 2)    { name = 'DOUBLE BOGEY';    kind = 'doublebogey'; }
   else                      { name = `+${overBy}`;      kind = 'over'; }
 
-  let cash = 0;
-  if (underBy > 0) {
-    cash = PAR_CASH; // base for completing the hole
-    for (let i = 0; i < underBy; i++) {
-      cash += PER_BALL_UNDER[Math.min(i, PER_BALL_UNDER.length - 1)];
-    }
-  } else if (underBy === 0) {
-    cash = PAR_CASH;
-  } else if (overBy === 1) {
-    cash = BOGEY_CASH;
+  // 1) par credit — flat bonus for finishing
+  let parCredit = 0;
+  if (underBy >= 0) parCredit = PAR_CREDIT;
+  else if (overBy === 1) parCredit = BOGEY_CREDIT;
+
+  // 2) under-par balls — cumulative
+  const underParCircles = Math.max(0, underBy);
+  let underParCash = 0;
+  for (let i = 0; i < underParCircles; i++) {
+    underParCash += PER_BALL_UNDER[Math.min(i, PER_BALL_UNDER.length - 1)];
   }
 
-  return { name, cash, kind, strokes, par, underBy, overBy };
+  // 3) leeway saved — flat $5 per stroke saved past par/strokes
+  const leewaySaved = Math.max(0, limit - Math.max(strokes, par));
+  const leewayCash = leewaySaved * PER_LEEWAY;
+
+  const cash = parCredit + underParCash + leewayCash;
+
+  return {
+    name, kind, cash, strokes, par,
+    strokeLimit: limit,
+    underBy, overBy,
+    underParCircles, leewaySaved,
+    parCredit, underParCash, leewayCash,
+  };
 }
 
 export class Run {
@@ -87,7 +107,7 @@ export class Run {
     if (this.status !== 'playing') return null;
     this.status = 'holed';
 
-    const result = computeScore(this.strokes, this.holeMeta.par);
+    const result = computeScore(this.strokes, this.holeMeta.par, this.holeMeta.strokeLimit);
 
     // streak: +$2 per consecutive birdie/eagle/ace, resets on par-or-worse
     const isBirdieOrBetter = result.kind === 'birdie' || result.kind === 'eagle' || result.kind === 'ace';
@@ -106,7 +126,9 @@ export class Run {
     this.lastResult = {
       ...result,
       breakdown: {
-        score: result.cash,
+        parCredit: result.parCredit,
+        underPar: result.underParCash,
+        leeway: result.leewayCash,
         streak: streakCash,
         interest: interestCash,
         total,
