@@ -1,130 +1,127 @@
-// Wacky Golf — Phase 0 entry point
-// Goal: prove Three.js renders on both iOS Safari and Chrome Android,
-// and confirm the low-poly stylized look direction.
+// Wacky Golf — Phase 1
+//
+// Goal: drag-back swing, custom ball physics, ball-into-cup detection,
+// follow camera. No clubs, no shop, no scoring beyond a stroke counter.
 
-import * as THREE from 'three';
+import {
+  Scene, PerspectiveCamera, WebGLRenderer, Color, Fog,
+  AmbientLight, DirectionalLight,
+} from 'three';
 
-// ------------------------------ scene setup ------------------------------
+import { buildHole, buildBall, TEE_POSITION, CUP_POSITION } from './scene/Hole.js';
+import { FollowCamera } from './scene/FollowCamera.js';
+import { BallPhysics, BALL_RADIUS } from './physics/BallPhysics.js';
+import { SwingController } from './input/SwingController.js';
+import { Bag } from './gameplay/Club.js';
+import { ClubSelector } from './ui/ClubSelector.js';
+import { Minimap } from './ui/Minimap.js';
+import { PowerMeter } from './ui/PowerMeter.js';
+import { RotateControls } from './ui/RotateControls.js';
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x87CEEB); // sky blue
-scene.fog = new THREE.Fog(0x87CEEB, 25, 60);
+// ----- Three.js setup -----
+const scene = new Scene();
+scene.background = new Color(0x87CEEB);
+scene.fog = new Fog(0x87CEEB, 35, 90);
 
-const camera = new THREE.PerspectiveCamera(
-  55,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  120
-);
-camera.position.set(0, 6, 14);
-camera.lookAt(0, 1, 0);
+const camera = new PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 200);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const renderer = new WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 document.body.appendChild(renderer.domElement);
 
-// ------------------------------ lighting ------------------------------
-
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+scene.add(new AmbientLight(0xffffff, 0.55));
+const sun = new DirectionalLight(0xffffff, 1.0);
 sun.position.set(8, 14, 6);
 scene.add(sun);
 
-// ------------------------------ ground ------------------------------
-
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(50, 50),
-  new THREE.MeshLambertMaterial({ color: 0x4caf50 })
-);
-ground.rotation.x = -Math.PI / 2;
-scene.add(ground);
-
-// darker green "fairway" patch + light "green" patch, just to hint at composition
-const fairway = new THREE.Mesh(
-  new THREE.PlaneGeometry(8, 24),
-  new THREE.MeshLambertMaterial({ color: 0x66bb6a })
-);
-fairway.rotation.x = -Math.PI / 2;
-fairway.position.set(0, 0.01, 0);
-scene.add(fairway);
-
-const green = new THREE.Mesh(
-  new THREE.CircleGeometry(3, 24),
-  new THREE.MeshLambertMaterial({ color: 0x81c784 })
-);
-green.rotation.x = -Math.PI / 2;
-green.position.set(0, 0.02, -10);
-scene.add(green);
-
-// ------------------------------ ball ------------------------------
-
-const ball = new THREE.Mesh(
-  new THREE.SphereGeometry(0.4, 16, 12),
-  new THREE.MeshLambertMaterial({ color: 0xffffff })
-);
-ball.position.set(0, 0.4, 8);
-scene.add(ball);
-
-// blob shadow under the ball (cheap alternative to real-time shadow mapping)
-const ballShadow = new THREE.Mesh(
-  new THREE.CircleGeometry(0.45, 16),
-  new THREE.MeshBasicMaterial({ color: 0x000000, opacity: 0.25, transparent: true })
-);
-ballShadow.rotation.x = -Math.PI / 2;
-ballShadow.position.set(0, 0.03, 8);
+// ----- hole + ball + camera -----
+const hole = buildHole(scene);
+const { mesh: ballMesh, shadow: ballShadow } = buildBall();
+scene.add(ballMesh);
 scene.add(ballShadow);
 
-// ------------------------------ flag ------------------------------
+const physics = new BallPhysics({
+  teePosition: TEE_POSITION,
+  cupPosition: CUP_POSITION,
+});
+ballMesh.position.copy(physics.position);
 
-const pole = new THREE.Mesh(
-  new THREE.CylinderGeometry(0.04, 0.04, 4, 8),
-  new THREE.MeshLambertMaterial({ color: 0xeeeeee })
-);
-pole.position.set(0, 2, -10);
-scene.add(pole);
+const followCamera = new FollowCamera(camera);
+followCamera.snap(physics.position);
 
-const flag = new THREE.Mesh(
-  new THREE.PlaneGeometry(1.2, 0.7),
-  new THREE.MeshLambertMaterial({ color: 0xff4444, side: THREE.DoubleSide })
-);
-flag.position.set(0.6, 3.6, -10);
-scene.add(flag);
+// ----- HUD -----
+const strokeEl = document.getElementById('stroke');
+const overlayEl = document.getElementById('overlay');
+let strokes = 0;
+const updateStrokeUI = () => {
+  if (strokeEl) strokeEl.textContent = `Strokes: ${strokes}`;
+};
+updateStrokeUI();
 
-// ------------------------------ trees ------------------------------
+const showOverlay = (text, ms = 1800) => {
+  if (!overlayEl) return;
+  overlayEl.textContent = text;
+  overlayEl.style.opacity = '1';
+  setTimeout(() => { overlayEl.style.opacity = '0'; }, ms);
+};
 
-function makeTree(x, z, scale = 1) {
-  const group = new THREE.Group();
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.25 * scale, 0.35 * scale, 1.6 * scale, 6),
-    new THREE.MeshLambertMaterial({ color: 0x6b4423 })
-  );
-  trunk.position.y = 0.8 * scale;
-  group.add(trunk);
+// ----- bag, club selector, minimap, power meter, rotate buttons -----
+const bag = new Bag('driver');
+const clubSelector = new ClubSelector(bag);
 
-  const leaves = new THREE.Mesh(
-    new THREE.ConeGeometry(1.1 * scale, 2.4 * scale, 7),
-    new THREE.MeshLambertMaterial({ color: 0x2d6a3e })
-  );
-  leaves.position.y = (0.8 + 1.2) * scale;
-  group.add(leaves);
+const minimap = new Minimap({
+  teePos: TEE_POSITION,
+  cupPos: CUP_POSITION,
+  fairwayRect: { cx: 0, cz: 0, w: 10, h: 38 },
+  greenRadius: 5,
+  bounds: { minX: -22, maxX: 22, minZ: -22, maxZ: 22 },
+});
 
-  group.position.set(x, 0, z);
-  scene.add(group);
-}
+const powerMeter = new PowerMeter();
+const rotateControls = new RotateControls(followCamera);
 
-makeTree(-7, 4, 1.0);
-makeTree(7, 0, 1.2);
-makeTree(-9, -3, 0.9);
-makeTree(8, -6, 1.1);
-makeTree(-5, -7, 1.0);
-makeTree(6, 6, 0.8);
+// ----- swing controller -----
+const swing = new SwingController({
+  ball: physics,
+  scene,
+  camera,
+  canvas: renderer.domElement,
+  bag,
+  onShotFired: () => {
+    strokes += 1;
+    updateStrokeUI();
+  },
+  onAim: (target) => {
+    if (target) {
+      minimap.setTarget(target.x, target.z);
+      minimap.setTrajectory(target.samples);
+      powerMeter.set(target.power);
+    } else {
+      minimap.clearTarget();
+      minimap.clearTrajectory();
+      powerMeter.set(null);
+    }
+  },
+});
 
-// ------------------------------ resize handling ------------------------------
+// ----- holed-out flow -----
+physics.onHoled = () => {
+  const word = strokes === 1 ? 'HOLE IN ONE!' : `HOLED IN ${strokes}`;
+  showOverlay(word, 2000);
+  // reset for another go after a short pause
+  setTimeout(() => {
+    physics.reset();
+    ballMesh.position.copy(physics.position);
+    strokes = 0;
+    updateStrokeUI();
+    followCamera.snap(physics.position);
+  }, 2200);
+};
 
+// ----- resize handling -----
 function handleResize() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const w = window.innerWidth, h = window.innerHeight;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
@@ -132,26 +129,44 @@ function handleResize() {
 window.addEventListener('resize', handleResize);
 window.addEventListener('orientationchange', handleResize);
 
-// ------------------------------ animation loop ------------------------------
+// ----- main loop -----
+// Fixed-timestep physics (1/60s) so the predictor and the actual sim
+// produce identical trajectories. Accumulator absorbs frame-rate variation.
+const FIXED_DT = 1 / 60;
+let accumulator = 0;
+let lastT = performance.now();
 
-let t = 0;
-function animate() {
-  requestAnimationFrame(animate);
-  t += 0.004;
+function frame() {
+  requestAnimationFrame(frame);
+  const now = performance.now();
+  let dt = (now - lastT) / 1000;
+  if (dt > 0.25) dt = 0.25;   // cap accumulator after a tab pause
+  lastT = now;
 
-  // slow camera orbit so we can confirm rendering + frame pacing on both browsers
-  const radius = 16;
-  camera.position.x = Math.sin(t) * radius;
-  camera.position.z = Math.cos(t) * radius + 2;
-  camera.position.y = 5.5 + Math.sin(t * 0.7) * 0.7;
-  camera.lookAt(0, 1, -2);
+  accumulator += dt;
+  while (accumulator >= FIXED_DT) {
+    physics.step(FIXED_DT);
+    accumulator -= FIXED_DT;
+  }
 
-  // gentle ball bob just for life
-  ball.position.y = 0.4 + Math.abs(Math.sin(t * 4)) * 0.08;
+  // visuals
+  ballMesh.position.copy(physics.position);
+  // blob shadow follows ball X/Z, sticks to ground
+  ballShadow.position.set(physics.position.x, 0.04, physics.position.z);
+  // shadow shrinks as ball flies higher
+  const heightAboveGround = Math.max(0, physics.position.y - BALL_RADIUS);
+  const shadowScale = Math.max(0.4, 1 - heightAboveGround * 0.05);
+  ballShadow.scale.setScalar(shadowScale);
+  ballShadow.material.opacity = 0.28 * shadowScale;
+
+  followCamera.update(physics.position);
+
+  // minimap update
+  minimap.setBall(physics.position.x, physics.position.z);
+  minimap.draw();
 
   renderer.render(scene, camera);
 }
-animate();
+frame();
 
-// quick log so we can confirm the entry point ran in remote devtools
-console.log('[wackygolf] Phase 0 scene up. UA:', navigator.userAgent);
+console.log('[wackygolf] Phase 1 ready. UA:', navigator.userAgent);

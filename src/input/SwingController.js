@@ -1,0 +1,227 @@
+// SwingController — Phase 1
+//
+// Pointer-based drag-back swing. Touch (or click) anywhere, drag back
+// from your starting point, release to launch. Ball flies in the OPPOSITE
+// direction of your drag, with power proportional to drag distance.
+
+import {
+  Vector3,
+  RingGeometry, SphereGeometry, MeshBasicMaterial, Mesh,
+} from 'three';
+
+import { predictTrajectory } from '../physics/BallPhysics.js';
+
+const STATE_IDLE = 0;
+const STATE_AIMING = 1;
+
+const MAX_DRAG_PX = 200;
+const MIN_DRAG_PX = 6;
+
+// CSS selectors that should NOT trigger a swing when tapped/dragged
+const UI_BLOCK_SELECTOR = '#club-selector, #minimap, #hud-top, button';
+
+export class SwingController {
+  constructor({ ball, scene, camera, canvas, bag, onShotFired, onAim }) {
+    this.ball = ball;
+    this.scene = scene;
+    this.camera = camera;
+    this.canvas = canvas;
+    this.bag = bag;
+    this.onShotFired = onShotFired || (() => {});
+    this.onAim = onAim || (() => {});
+
+    // scratch vectors so we don't allocate per frame
+    this._camFwd = new Vector3();
+    this._camRight = new Vector3();
+    this._worldUp = new Vector3(0, 1, 0);
+
+    this.state = STATE_IDLE;
+    this.startX = 0;
+    this.startY = 0;
+    this.dx = 0;
+    this.dy = 0;
+
+    this.orbs = this._makeOrbs(28);
+    this.landingMarker = this._makeLandingMarker();
+    this.landingMarker.visible = false;
+    scene.add(this.landingMarker);
+
+    this._bind();
+  }
+
+  _makeOrbs(count) {
+    const geom = new SphereGeometry(0.15, 7, 5);
+    const mat = new MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const orbs = [];
+    for (let i = 0; i < count; i++) {
+      // each orb gets its own material clone so we can fade per index
+      const m = mat.clone();
+      const orb = new Mesh(geom, m);
+      orb.renderOrder = 998;
+      orb.frustumCulled = false;
+      orb.visible = false;
+      this.scene.add(orb);
+      orbs.push(orb);
+    }
+    return orbs;
+  }
+
+  _makeLandingMarker() {
+    const geom = new RingGeometry(0.7, 1.1, 32);
+    const mat = new MeshBasicMaterial({
+      color: 0x00e5ff,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      depthTest: false,
+    });
+    const mesh = new Mesh(geom, mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.renderOrder = 999;
+    mesh.frustumCulled = false;
+    return mesh;
+  }
+
+  _bind() {
+    // pointerdown only on the canvas — taps on UI buttons never reach us
+    this.canvas.addEventListener('pointerdown', this._onDown, { passive: false });
+    // move/up listen on window so swings continue working if your finger
+    // strays off the canvas mid-drag
+    window.addEventListener('pointermove', this._onMove, { passive: false });
+    window.addEventListener('pointerup', this._onUp, { passive: false });
+    window.addEventListener('pointercancel', this._onUp, { passive: false });
+  }
+
+  _onDown = (e) => {
+    if (!this.ball.isAtRest || this.ball.isHoled) return;
+    if (e.isPrimary === false) return;
+    if (e.target && e.target.closest && e.target.closest(UI_BLOCK_SELECTOR)) return;
+    this.state = STATE_AIMING;
+    this.startX = e.clientX;
+    this.startY = e.clientY;
+    this.dx = 0;
+    this.dy = 0;
+    this._hideOrbs();
+    this.landingMarker.visible = false;
+    this.onAim(null);
+    e.preventDefault();
+  };
+
+  _onMove = (e) => {
+    if (this.state !== STATE_AIMING) return;
+    if (e.isPrimary === false) return;
+    this.dx = e.clientX - this.startX;
+    this.dy = e.clientY - this.startY;
+    this._updateAim();
+    e.preventDefault();
+  };
+
+  _onUp = (e) => {
+    if (this.state !== STATE_AIMING) return;
+    if (e.isPrimary === false) return;
+    this.state = STATE_IDLE;
+    this._hideOrbs();
+    this.landingMarker.visible = false;
+    this.onAim(null);
+    this._fire();
+    e.preventDefault();
+  };
+
+  _computeLaunch() {
+    const dragLen = Math.hypot(this.dx, this.dy);
+    if (dragLen < MIN_DRAG_PX) return null;
+    const club = this.bag.active;
+    const power = Math.min(dragLen / MAX_DRAG_PX, 1);
+    const speed = power * club.maxSpeed;
+
+    // camera-relative basis: ball fires in the camera's "forward" direction
+    // when the player drags DOWN on screen, regardless of camera yaw.
+    this.camera.getWorldDirection(this._camFwd);
+    this._camFwd.y = 0; this._camFwd.normalize();
+    this._camRight.crossVectors(this._camFwd, this._worldUp).normalize();
+
+    // drag-down (dy positive) → fire forward
+    // drag-right (dx positive) → fire LEFT (slingshot — opposite of drag)
+    const fwdAmt = this.dy / dragLen;
+    const rightAmt = -this.dx / dragLen;
+
+    const dirX = this._camFwd.x * fwdAmt + this._camRight.x * rightAmt;
+    const dirZ = this._camFwd.z * fwdAmt + this._camRight.z * rightAmt;
+
+    const horiz = Math.cos(club.launchAngle);
+    const vert = Math.sin(club.launchAngle);
+    return {
+      dragLen, power, speed, dirX, dirZ, club,
+      velocity: new Vector3(
+        dirX * speed * horiz,
+        speed * vert,
+        dirZ * speed * horiz,
+      ),
+    };
+  }
+
+  _updateAim() {
+    const launch = this._computeLaunch();
+    if (!launch) {
+      this._hideOrbs();
+      this.landingMarker.visible = false;
+      return;
+    }
+
+    const traj = predictTrajectory(this.ball.position, launch.velocity);
+    this._placeOrbs(traj.samples, launch.power);
+
+    this.landingMarker.position.set(traj.rest.x, 0.06, traj.rest.z);
+    this.landingMarker.visible = true;
+
+    // minimap consumes both the rest position and the trajectory samples
+    this.onAim({
+      x: traj.rest.x,
+      z: traj.rest.z,
+      power: launch.power,
+      club: launch.club,
+      samples: traj.samples,
+    });
+  }
+
+  _placeOrbs(samples, power) {
+    const n = this.orbs.length;
+    const m = samples.length;
+    // tint slightly warmer with higher power
+    const tintR = 1.0;
+    const tintG = 1.0 - power * 0.45;
+    const tintB = 1.0 - power * 0.85;
+    for (let i = 0; i < n; i++) {
+      const orb = this.orbs[i];
+      if (i < m) {
+        const s = samples[i];
+        orb.position.set(s.x, s.y, s.z);
+        orb.visible = true;
+        orb.material.color.setRGB(tintR, tintG, tintB);
+        // gently shrink/fade toward end for a tapered streak
+        const t = i / Math.max(1, m - 1);
+        orb.scale.setScalar(1 - t * 0.45);
+        orb.material.opacity = 0.95 - t * 0.55;
+      } else {
+        orb.visible = false;
+      }
+    }
+  }
+
+  _hideOrbs() {
+    for (const o of this.orbs) o.visible = false;
+  }
+
+  _fire() {
+    const launch = this._computeLaunch();
+    if (!launch) return;
+    this.ball.launch(launch.velocity);
+    this.onShotFired();
+  }
+}

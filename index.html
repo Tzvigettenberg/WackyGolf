@@ -23,36 +23,134 @@
       overscroll-behavior: none;
     }
     canvas { display: block; touch-action: none; }
-    #hud {
-      position: fixed; inset: 0;
+    #hud-top {
+      position: fixed; top: env(safe-area-inset-top, 12px); left: 14px; right: 14px;
+      display: flex; justify-content: space-between; align-items: flex-start;
       pointer-events: none;
-      padding: env(safe-area-inset-top, 12px) 14px 14px 14px;
       color: white;
       text-shadow: 0 2px 6px rgba(0,0,0,0.4);
     }
     #title {
-      font-size: 18px; font-weight: 800; letter-spacing: 0.5px;
+      font-size: 16px; font-weight: 800; letter-spacing: 0.5px;
       text-transform: uppercase;
     }
-    #subtitle {
-      font-size: 12px; opacity: 0.85; margin-top: 4px;
+    #stroke {
+      font-size: 14px; font-weight: 700;
+      background: rgba(0,0,0,0.25);
+      padding: 6px 10px; border-radius: 999px;
     }
-    #footer {
-      position: fixed; left: 0; right: 0; bottom: 0;
-      padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px));
-      color: white; opacity: 0.7;
+    #hud-bottom {
+      position: fixed; left: 0; right: 0;
+      bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      padding: 0 14px;
+      color: white; opacity: 0.8;
       font-size: 11px; text-align: center;
       text-shadow: 0 2px 6px rgba(0,0,0,0.4);
       pointer-events: none;
     }
+    #overlay {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+      font-size: 36px; font-weight: 900; letter-spacing: 1px;
+      color: #fff;
+      text-shadow: 0 4px 16px rgba(0,0,0,0.5);
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    #club-selector {
+      position: fixed;
+      bottom: calc(40px + env(safe-area-inset-bottom, 0px));
+      left: 50%; transform: translateX(-50%);
+      display: flex; gap: 6px;
+      z-index: 5;
+    }
+    .club-btn {
+      --club-color: #fff;
+      min-width: 64px; padding: 9px 10px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 2px solid var(--club-color);
+      border-radius: 10px;
+      color: #fff;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      transition: transform 0.1s ease, background 0.1s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .club-btn .club-short { font-size: 16px; font-weight: 800; line-height: 1; }
+    .club-btn .club-name  { font-size: 10px; opacity: 0.85; line-height: 1; }
+    .club-btn.active {
+      background: var(--club-color);
+      color: #111;
+      transform: translateY(-2px) scale(1.04);
+    }
+    .club-btn.active .club-name { opacity: 0.9; }
+    .club-btn:active { transform: scale(0.97); }
+
+    /* Power meter — left edge, vertical fill */
+    #power-meter {
+      position: fixed;
+      left: 16px;
+      top: 50%; transform: translateY(-50%);
+      width: 16px; height: 180px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1.5px solid rgba(255, 255, 255, 0.55);
+      border-radius: 10px;
+      overflow: hidden;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.12s ease;
+      z-index: 4;
+    }
+    #power-meter-fill {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      height: 0%;
+      background: hsl(120, 85%, 50%);
+      transition: height 0.04s linear, background 0.04s linear;
+    }
+    #power-meter-label {
+      position: absolute;
+      left: 24px; top: 50%; transform: translateY(-50%);
+      color: white;
+      font-size: 13px; font-weight: 800;
+      text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      white-space: nowrap;
+    }
+
+    /* Rotate camera buttons — left & right edges, vertically centered */
+    .rotate-btn {
+      position: fixed;
+      top: 50%; transform: translateY(-50%);
+      width: 52px; height: 52px;
+      background: rgba(0, 0, 0, 0.28);
+      border: 1.5px solid rgba(255, 255, 255, 0.45);
+      border-radius: 50%;
+      color: white;
+      font-size: 28px; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.08s ease, background 0.08s ease;
+      z-index: 4;
+      padding: 0;
+      font-family: inherit;
+    }
+    .rotate-btn:active {
+      background: rgba(0, 0, 0, 0.55);
+      transform: translateY(-50%) scale(0.92);
+    }
+    #rotate-left  { left: 50px; }
+    #rotate-right { right: 14px; }
   </style>
 </head>
 <body>
-  <div id="hud">
+  <div id="hud-top">
     <div id="title">Wacky Golf</div>
-    <div id="subtitle">Phase 0 · scaffold smoke test</div>
+    <div id="stroke">Strokes: 0</div>
   </div>
-  <div id="footer">If you see a ball, a flag, and trees rotating — Phase 0 works on this browser.</div>
+  <div id="hud-bottom">Pick a club · drag back · release to swing · sink it</div>
+  <div id="overlay"></div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>
