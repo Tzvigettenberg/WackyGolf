@@ -18,8 +18,10 @@ import { Minimap } from './ui/Minimap.js';
 import { PowerMeter } from './ui/PowerMeter.js';
 import { RotateControls } from './ui/RotateControls.js';
 import { Run } from './core/Run.js';
-import { templateForHole, holeMetaFromTemplate } from './content/holes.js';
+import { templateForHole, holeMetaFromTemplate, HOLES } from './content/holes.js';
 import { Collection } from './ui/Collection.js';
+import { TitleScreen } from './ui/TitleScreen.js';
+import { PauseMenu } from './ui/PauseMenu.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -130,9 +132,154 @@ run.onChange(() => {
 updateHUD();
 
 // ----- collection (hole library) -----
-const collection = new Collection();
+const collection = new Collection({
+  onShowHoleDetail: (template) => showHoleInDetail(template),
+});
 // the first hole is loaded directly in the boot section, so discover it now
 collection.discoverHole(currentHole.id);
+
+// ----- 3D hole detail view -----
+const detailEl = document.getElementById('hole-detail');
+const detailCloseBtn = detailEl.querySelector('.detail-close');
+const detailNameEl = detailEl.querySelector('.detail-name');
+const detailMetaEl = detailEl.querySelector('.detail-meta');
+
+let preDetailHoleId = null;
+
+function showHoleInDetail(template) {
+  preDetailHoleId = currentHole && currentHole.id;
+
+  // hide the title & collection so the live 3D scene is fully visible
+  titleScreen.hide();
+  collection.close();
+
+  // swap geometry to the chosen hole (Run state untouched — purely visual)
+  swapShowcaseHole(template);
+
+  // populate detail UI
+  detailNameEl.textContent = template.name;
+  detailMetaEl.textContent = `Par ${template.par} · ${describeHoleFeatures(template)}`;
+  detailEl.classList.add('shown');
+}
+
+function exitHoleDetail() {
+  // restore the prior showcase hole (if it was different)
+  if (preDetailHoleId && preDetailHoleId !== currentHole.id) {
+    const orig = HOLES.find((h) => h.id === preDetailHoleId) || HOLES[0];
+    swapShowcaseHole(orig);
+  }
+  preDetailHoleId = null;
+
+  detailEl.classList.remove('shown');
+
+  // reopen the collection on top of the title
+  titleScreen.show({ canResume, holeName: currentHole.name });
+  collection.open();
+}
+
+function swapShowcaseHole(template) {
+  disposeHole(scene, currentHole);
+  currentHole = buildHole(scene, template);
+  physics.setHole(currentHole.teePosition, currentHole.cupPosition, currentHole.surfaces);
+  swing.setSurfaces(currentHole.surfaces);
+  // also push to the minimap so it's right whenever it shows next
+  minimap.setLayout({
+    teePos: currentHole.teePosition,
+    cupPos: currentHole.cupPosition,
+    fairwayRects: currentHole.surfaces.fairwayRects,
+    greenCenter: { x: currentHole.surfaces.green.cx, z: currentHole.surfaces.green.cz },
+    greenRadius: currentHole.surfaces.green.radius,
+    bunkers: currentHole.surfaces.bunkers,
+    water: currentHole.surfaces.water,
+    bounds: currentHole.bounds,
+  });
+  ballMesh.position.copy(physics.position);
+  followCamera.targetYaw = 0;
+  followCamera.snap(physics.position);
+}
+
+function describeHoleFeatures(template) {
+  const bits = [];
+  if (template.water && template.water.length) bits.push('water');
+  if (template.bunkers && template.bunkers.length) {
+    bits.push(`${template.bunkers.length} bunker${template.bunkers.length > 1 ? 's' : ''}`);
+  }
+  if (template.fairway && template.fairway.length > 1) bits.push('shaped fairway');
+  if (!bits.length) bits.push('open');
+  return bits.join(' · ');
+}
+
+detailCloseBtn.addEventListener('click', exitHoleDetail);
+
+// ----- title screen + pause flow -----
+let inGame = false;       // false = title screen showing, true = playing
+let canResume = false;    // becomes true once a run is started; reset on Play Again
+let savedYaw = 0;         // restore camera yaw on Resume
+const TITLE_ORBIT_RATE = 0.18; // rad/sec — gentle showcase orbit (was 0.45, felt dizzying)
+
+const titleScreen = new TitleScreen({
+  onPlay: () => {
+    // Start a fresh run, regardless of any in-progress state
+    clearDistanceImmediate();
+    run.resetRun(holeMetaFromTemplate(templateForHole(1)));
+    loadCurrentHole();
+    leaveTitleScreen();
+    canResume = true;
+  },
+  onResume: () => {
+    if (!canResume) return;
+    leaveTitleScreen();
+  },
+  onCollection: () => {
+    collection.open();
+  },
+});
+
+// PauseMenu — small mid-game overlay (Resume / Quit). Distinct from TitleScreen.
+const pauseMenu = new PauseMenu({
+  onResume: () => {
+    pauseMenu.hide();
+    leaveTitleScreen(); // same logic — physics resumes, yaw restored
+  },
+  onQuit: () => {
+    pauseMenu.hide();
+    canResume = false;          // run is abandoned
+    enterTitleScreen();         // back to the home view
+  },
+});
+
+const pauseBtn = document.getElementById('pause-btn');
+pauseBtn.addEventListener('click', () => {
+  // Mid-run pause goes to the small PauseMenu, not the full title screen.
+  inGame = false;
+  swing.setEnabled(false);
+  savedYaw = followCamera.targetYaw;
+  pauseMenu.show();
+});
+
+function enterTitleScreen() {
+  inGame = false;
+  swing.setEnabled(false);
+  savedYaw = followCamera.targetYaw; // restore on Resume
+  titleScreen.show({ canResume, holeName: currentHole.name });
+}
+
+function leaveTitleScreen() {
+  inGame = true;
+  // discard any time that elapsed during the title/pause screen so we don't
+  // suddenly replay a bunch of physics steps when gameplay resumes
+  accumulator = 0;
+  lastT = performance.now();
+  titleScreen.hide();
+  // Now we're actually back to gameplay — re-show the HUD.
+  document.body.classList.remove('title-active');
+  // restore the yaw the player had before pausing
+  followCamera.targetYaw = savedYaw;
+  swing.setEnabled(run.isPlayable);
+}
+
+// (Title screen is shown later — after `swing` is constructed below — because
+// enterTitleScreen() touches swing.setEnabled and const has a temporal dead zone.)
 
 // ----- bag, club selector, minimap, power meter, rotate buttons -----
 const bag = new Bag('driver');
@@ -305,10 +452,15 @@ function frame() {
   if (dt > 0.25) dt = 0.25;   // cap accumulator after a tab pause
   lastT = now;
 
-  accumulator += dt;
-  while (accumulator >= FIXED_DT) {
-    physics.step(FIXED_DT);
-    accumulator -= FIXED_DT;
+  if (inGame) {
+    accumulator += dt;
+    while (accumulator >= FIXED_DT) {
+      physics.step(FIXED_DT);
+      accumulator -= FIXED_DT;
+    }
+  } else {
+    // title screen — slowly orbit the camera around whatever's loaded
+    followCamera.targetYaw += TITLE_ORBIT_RATE * dt;
   }
 
   // alpha is "how far through the next physics step we are" (0..1)
@@ -345,6 +497,10 @@ function frame() {
 
   renderer.render(scene, camera);
 }
+
+// Show the title screen on boot — must run AFTER `swing` is constructed
+// because enterTitleScreen() touches swing.setEnabled.
+enterTitleScreen();
 frame();
 
 console.log('[wackygolf] Phase 1 ready. UA:', navigator.userAgent);

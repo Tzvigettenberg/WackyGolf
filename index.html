@@ -233,7 +233,7 @@
       flex-direction: column;
       background: rgba(20, 40, 30, 0.88);
       backdrop-filter: blur(8px);
-      z-index: 60;
+      z-index: 90;
       color: white;
       font-family: inherit;
       padding: env(safe-area-inset-top, 12px) 12px env(safe-area-inset-bottom, 12px) 12px;
@@ -284,27 +284,45 @@
     .hole-name { font-size: 13px; font-weight: 800; letter-spacing: 0.5px; }
     .hole-meta { font-size: 11px; opacity: 0.75; margin-top: 2px; }
 
-    /* Detail (zoomed-in single hole) */
+    /* Detail view — transparent overlay so the live 3D hole is visible behind it */
     #hole-detail {
       position: fixed; inset: 0;
       display: none;
-      flex-direction: column; align-items: center; justify-content: center;
-      gap: 14px;
-      background: rgba(0, 0, 0, 0.7);
-      z-index: 70;
-    }
-    #hole-detail.shown { display: flex; }
-    #hole-detail canvas { border-radius: 10px; }
-    #hole-detail .detail-name { font-size: 24px; font-weight: 900; letter-spacing: 1px; }
-    #hole-detail .detail-meta { font-size: 14px; opacity: 0.85; }
-    #hole-detail .detail-close {
-      margin-top: 6px;
-      padding: 10px 22px;
-      font-size: 14px; font-weight: 800;
-      background: white; color: #111;
-      border: none; border-radius: 10px;
-      cursor: pointer;
+      pointer-events: none;
+      z-index: 100;
+      color: white;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.55);
       font-family: inherit;
+    }
+    #hole-detail.shown { display: block; }
+    #hole-detail .detail-close {
+      position: absolute;
+      top: env(safe-area-inset-top, 14px); left: 14px;
+      pointer-events: auto;
+      padding: 10px 16px;
+      background: rgba(0,0,0,0.55);
+      border: 1.5px solid rgba(255,255,255,0.35);
+      color: white;
+      border-radius: 999px;
+      font-family: inherit;
+      font-size: 13px; font-weight: 800; letter-spacing: 1px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    #hole-detail .detail-close:active { transform: scale(0.96); }
+    #hole-detail .detail-name {
+      position: absolute;
+      top: env(safe-area-inset-top, 14px);
+      left: 50%; transform: translateX(-50%);
+      font-size: 22px; font-weight: 900; letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    #hole-detail .detail-meta {
+      position: absolute;
+      top: calc(env(safe-area-inset-top, 14px) + 30px);
+      left: 50%; transform: translateX(-50%);
+      font-size: 13px; opacity: 0.85; letter-spacing: 0.5px;
+      white-space: nowrap;
     }
     #hud-bottom {
       position: fixed; left: 0; right: 0;
@@ -467,10 +485,9 @@
   </div>
 
   <div id="hole-detail" role="dialog" aria-modal="true">
-    <canvas></canvas>
+    <button class="detail-close" type="button">← Back</button>
     <div class="detail-name"></div>
     <div class="detail-meta"></div>
-    <button class="detail-close" type="button" onclick="document.getElementById('hole-detail').classList.remove('shown')">Close</button>
   </div>
 
   <script type="module" src="/src/main.js"></script>

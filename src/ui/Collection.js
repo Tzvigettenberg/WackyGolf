@@ -13,16 +13,15 @@ const STORAGE_KEY = 'wackygolf_discovered_holes_v1';
 const PREVIEW_PX = 130;
 
 export class Collection {
-  constructor() {
+  constructor({ onShowHoleDetail } = {}) {
     this.modal = document.getElementById('collection-modal');
     this.grid = document.getElementById('hole-grid');
-    this.openBtn = document.getElementById('collection-btn');
     this.closeBtn = document.getElementById('collection-close');
-    this.detailEl = document.getElementById('hole-detail');
 
+    this.onShowHoleDetail = onShowHoleDetail || null;
     this.discovered = new Set(this._load());
 
-    this.openBtn.addEventListener('click', () => this.open());
+    // open buttons are wired externally now (e.g., from the title screen)
     this.closeBtn.addEventListener('click', () => this.close());
     // backdrop click closes
     this.modal.addEventListener('click', (e) => {
@@ -98,29 +97,12 @@ export class Collection {
       card.appendChild(label);
 
       if (seen) {
-        card.addEventListener('click', () => this._showDetail(hole));
+        card.addEventListener('click', () => {
+          if (this.onShowHoleDetail) this.onShowHoleDetail(hole);
+        });
       }
       this.grid.appendChild(card);
     }
-  }
-
-  _showDetail(hole) {
-    if (!this.detailEl) return;
-    const canvas = this.detailEl.querySelector('canvas');
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const SIZE = 280;
-    canvas.width = SIZE * dpr;
-    canvas.height = SIZE * dpr;
-    canvas.style.width = `${SIZE}px`;
-    canvas.style.height = `${SIZE}px`;
-    const ctx = canvas.getContext('2d');
-    ctx.scale(dpr, dpr);
-    drawHolePreview(ctx, hole, SIZE);
-
-    this.detailEl.querySelector('.detail-name').textContent = hole.name;
-    this.detailEl.querySelector('.detail-meta').textContent =
-      `Par ${hole.par} · ${describeFeatures(hole)}`;
-    this.detailEl.classList.add('shown');
   }
 }
 
