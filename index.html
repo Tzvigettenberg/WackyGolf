@@ -52,7 +52,118 @@
       -webkit-tap-highlight-color: transparent;
     }
     #hud-stats > button:active { transform: scale(0.95); }
-    #collection-btn { background: rgba(0,0,0,0.42); }
+    #pause-btn { background: rgba(0,0,0,0.42); font-size: 16px; padding: 4px 10px; }
+
+    /* Hide gameplay UI when the title screen is shown */
+    body.title-active #hud-top,
+    body.title-active #hud-bottom,
+    body.title-active #club-selector,
+    body.title-active #minimap,
+    body.title-active #power-meter,
+    body.title-active #shot-distance,
+    body.title-active .rotate-btn { display: none !important; }
+
+    /* Title screen */
+    #title-screen {
+      position: fixed; inset: 0;
+      display: none;
+      flex-direction: column; align-items: center; justify-content: space-between;
+      pointer-events: none;
+      z-index: 80;
+      padding: env(safe-area-inset-top, 24px) 16px env(safe-area-inset-bottom, 24px);
+      background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.45) 0%,
+        rgba(0, 0, 0, 0.15) 35%,
+        rgba(0, 0, 0, 0.15) 65%,
+        rgba(0, 0, 0, 0.55) 100%
+      );
+      color: white;
+      text-shadow: 0 3px 14px rgba(0, 0, 0, 0.55);
+      font-family: inherit;
+    }
+    #title-screen.shown { display: flex; }
+    #title-screen .top {
+      pointer-events: none;
+      text-align: center; padding-top: 28px;
+    }
+    #title-screen .logo {
+      font-size: 44px; font-weight: 900; letter-spacing: 3px; line-height: 1;
+      text-transform: uppercase;
+    }
+    #title-subtitle {
+      margin-top: 10px;
+      font-size: 13px; letter-spacing: 1.5px; opacity: 0.8; text-transform: uppercase;
+    }
+    #title-screen .center {
+      display: flex; flex-direction: column; gap: 12px; align-items: center;
+      pointer-events: auto;
+      /* center vertically within the screen — pushes itself to the middle of
+         the remaining space below the top section */
+      margin: auto 0;
+    }
+    #title-screen .center button {
+      pointer-events: auto;
+      min-width: 220px;
+      padding: 14px 22px;
+      font-size: 17px; font-weight: 800; letter-spacing: 1.5px;
+      border: none; border-radius: 14px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+      transition: transform 0.08s ease;
+    }
+    #title-screen .center button:active { transform: scale(0.97); }
+    #title-play   { background: white; color: #111; }
+    #title-resume { background: #4caf50; color: white; }
+    /* Pause menu — small centered card mid-game */
+    #pause-menu {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(4px);
+      z-index: 75;
+      font-family: inherit;
+    }
+    #pause-menu.shown { display: flex; }
+    #pause-menu .pause-card {
+      background: #2c4f33;
+      color: white;
+      border-radius: 16px;
+      padding: 24px 28px;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 12px; min-width: 240px;
+      box-shadow: 0 10px 32px rgba(0, 0, 0, 0.4);
+    }
+    #pause-menu h2 {
+      margin: 0 0 4px;
+      font-size: 24px; letter-spacing: 2px; text-transform: uppercase;
+    }
+    #pause-menu button {
+      min-width: 200px;
+      padding: 12px 18px;
+      font-size: 15px; font-weight: 800; letter-spacing: 1px;
+      border: none; border-radius: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+    }
+    #pause-menu button:active { transform: scale(0.97); }
+    #pause-resume { background: white; color: #111; }
+    #pause-quit   { background: rgba(255, 255, 255, 0.16); color: white; border: 1.5px solid rgba(255, 255, 255, 0.35); }
+
+    /* Collection sits below Play/Resume — visually secondary */
+    #title-collection {
+      min-width: 220px;
+      background: rgba(255, 255, 255, 0.16) !important;
+      color: white !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.35) !important;
+      box-shadow: none !important;
+      font-size: 14px !important;
+      letter-spacing: 1px !important;
+    }
     #stat-cash { background: rgba(46, 125, 50, 0.55); }
     #stat-strokes.warning { background: rgba(255, 152, 0, 0.55); }
     #stat-strokes.last-chance { background: rgba(220, 50, 50, 0.85); animation: pulse 0.6s ease-in-out infinite alternate; }
@@ -307,7 +418,7 @@
       <div id="stat-hole">HOLE 1 · PAR 4</div>
       <div id="stat-strokes">STROKE 0/8</div>
       <div id="stat-cash">$8</div>
-      <button id="collection-btn" type="button" aria-label="Open hole collection">📋</button>
+      <button id="pause-btn" type="button" aria-label="Pause to title screen">☰</button>
     </div>
   </div>
   <div id="hud-bottom">Pick a club · drag back · release to swing · sink it</div>
@@ -324,6 +435,26 @@
     </div>
     <button class="play-again" id="play-again-btn" type="button">Play Again</button>
   </div>
+  <div id="pause-menu" role="dialog" aria-modal="true" aria-label="Paused">
+    <div class="pause-card">
+      <h2>Paused</h2>
+      <button id="pause-resume" type="button">Resume</button>
+      <button id="pause-quit" type="button">Quit to Title</button>
+    </div>
+  </div>
+
+  <div id="title-screen" role="dialog" aria-modal="true" aria-label="Title screen">
+    <div class="top">
+      <div class="logo">Wacky Golf</div>
+      <div id="title-subtitle"></div>
+    </div>
+    <div class="center">
+      <button id="title-play" type="button">Play</button>
+      <button id="title-resume" type="button">Resume</button>
+      <button id="title-collection" type="button">📋 Collection</button>
+    </div>
+  </div>
+
   <div id="collection-modal" role="dialog" aria-modal="true" aria-label="Hole Collection">
     <header>
       <h2>Collection</h2>
