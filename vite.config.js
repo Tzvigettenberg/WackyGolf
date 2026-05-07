@@ -4,7 +4,7 @@ import { defineConfig } from 'vite';
 // https://<username>.github.io/wackygolf/
 // In `npm run dev` Vite uses '/' regardless of this value.
 export default defineConfig({
-  base: '/wackygolf/',
+  base: '/WackyGolf/',
   server: {
     host: true,   // allows phone on same Wi-Fi to hit dev server
     port: 5173,
