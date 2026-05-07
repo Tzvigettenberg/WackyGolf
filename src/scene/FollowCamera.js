@@ -1,33 +1,39 @@
-// FollowCamera — Phase 2
+// FollowCamera — Phase 2.6
 //
-// Sits behind the ball at a fixed offset. Lerps toward the desired position
-// each frame for a smooth feel. The whole rig can be yawed around the ball
-// via rotate(deltaRadians) — used by the on-screen rotate buttons.
+// Sits behind the ball at a fixed offset. Tracks both ball motion AND yaw
+// independently:
+//   - `targetYaw` is what RotateControls writes to (jumps instantly).
+//   - `yaw` is what we actually use to compute camera position; it eases
+//     toward targetYaw each frame so rotation traces a smooth circular arc
+//     around the ball rather than lerping linearly through space.
 
 import { Vector3 } from 'three';
 
 const BASE_OFFSET = new Vector3(0, 6, 11);     // behind & above when yaw = 0
-const BASE_LOOK   = new Vector3(0, 0, -6);     // look point relative to ball when yaw = 0
-const LERP = 0.22;                             // 0–1 per frame; bumped for snappy rotation response
+const BASE_LOOK   = new Vector3(0, 0, -6);     // look point relative to ball
+const POS_LERP    = 0.32;                      // camera position chase rate
+const YAW_LERP    = 0.18;                      // yaw catch-up rate (per frame)
 
 export class FollowCamera {
   constructor(camera) {
     this.camera = camera;
-    this.yaw = 0; // radians, 0 = facing -Z (cup)
+    this.yaw = 0;
+    this.targetYaw = 0;
 
-    this._desired   = new Vector3();
-    this._lookAt    = new Vector3();
-    this._rotated   = new Vector3();
+    this._desired = new Vector3();
+    this._lookAt  = new Vector3();
+    this._rotated = new Vector3();
     this._initialized = false;
   }
 
-  /** Add to the current yaw. Positive value rotates the view clockwise (looking from above). */
+  /** Set the rotation goal — actual yaw will ease toward it. */
   rotate(deltaRadians) {
-    this.yaw += deltaRadians;
+    this.targetYaw += deltaRadians;
   }
 
   /** Snap immediately into position (e.g., on hole start). */
   snap(ballPos) {
+    this.yaw = this.targetYaw;
     this._applyYaw(BASE_OFFSET, this._rotated);
     this._desired.copy(ballPos).add(this._rotated);
 
@@ -45,9 +51,17 @@ export class FollowCamera {
       return;
     }
 
+    // ease yaw toward target so rotation traces an arc
+    const yawErr = this.targetYaw - this.yaw;
+    if (Math.abs(yawErr) < 0.0008) {
+      this.yaw = this.targetYaw;
+    } else {
+      this.yaw += yawErr * YAW_LERP;
+    }
+
     this._applyYaw(BASE_OFFSET, this._rotated);
     this._desired.copy(ballPos).add(this._rotated);
-    this.camera.position.lerp(this._desired, LERP);
+    this.camera.position.lerp(this._desired, POS_LERP);
 
     this._applyYaw(BASE_LOOK, this._rotated);
     this._lookAt.copy(ballPos).add(this._rotated);

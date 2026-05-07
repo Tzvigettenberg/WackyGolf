@@ -22,7 +22,7 @@ export class Minimap {
     this.canvas.id = 'minimap';
     this.canvas.style.cssText = `
       position: fixed;
-      top: calc(env(safe-area-inset-top, 12px) + 36px);
+      top: env(safe-area-inset-top, 12px);
       right: 12px;
       width: ${SIZE}px;
       height: ${SIZE}px;

@@ -24,20 +24,71 @@
     }
     canvas { display: block; touch-action: none; }
     #hud-top {
-      position: fixed; top: env(safe-area-inset-top, 12px); left: 14px; right: 14px;
-      display: flex; justify-content: space-between; align-items: flex-start;
+      position: fixed; top: env(safe-area-inset-top, 12px); left: 14px;
       pointer-events: none;
       color: white;
       text-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
     }
     #title {
       font-size: 16px; font-weight: 800; letter-spacing: 0.5px;
       text-transform: uppercase;
     }
-    #stroke {
-      font-size: 14px; font-weight: 700;
-      background: rgba(0,0,0,0.25);
-      padding: 6px 10px; border-radius: 999px;
+    #hud-stats {
+      display: flex; gap: 5px; flex-wrap: wrap;
+    }
+    #hud-stats > div {
+      font-size: 13px; font-weight: 700;
+      background: rgba(0,0,0,0.32);
+      padding: 5px 10px; border-radius: 999px;
+      line-height: 1;
+    }
+    #stat-cash { background: rgba(46, 125, 50, 0.55); }
+    #stat-strokes.warning { background: rgba(255, 152, 0, 0.55); }
+    #stat-strokes.last-chance { background: rgba(220, 50, 50, 0.85); animation: pulse 0.6s ease-in-out infinite alternate; }
+    @keyframes pulse {
+      from { transform: scale(1); }
+      to   { transform: scale(1.05); }
+    }
+    #score-banner {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      pointer-events: none;
+      flex-direction: column; gap: 6px;
+      opacity: 0; transition: opacity 0.2s ease;
+    }
+    #score-banner .banner-name {
+      font-size: 44px; font-weight: 900; letter-spacing: 2px;
+      color: white; text-shadow: 0 4px 18px rgba(0,0,0,0.6);
+    }
+    #score-banner .banner-cash {
+      font-size: 22px; font-weight: 800;
+      color: #c8f7c8; text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    }
+    #run-over {
+      position: fixed; inset: 0;
+      display: none;
+      flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(6px);
+      z-index: 50;
+      color: white;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+      font-family: inherit;
+    }
+    #run-over.shown { display: flex; }
+    #run-over h1 { font-size: 38px; margin: 0; letter-spacing: 2px; }
+    #run-over .stats { display: flex; flex-direction: column; gap: 4px; align-items: center; font-size: 16px; opacity: 0.9; }
+    #run-over .play-again {
+      margin-top: 12px;
+      padding: 14px 28px;
+      font-size: 16px; font-weight: 800;
+      background: white;
+      color: #111;
+      border: none; border-radius: 12px;
+      cursor: pointer;
+      font-family: inherit;
     }
     #hud-bottom {
       position: fixed; left: 0; right: 0;
@@ -131,7 +182,7 @@
       display: flex; align-items: center; justify-content: center;
       cursor: pointer;
       -webkit-tap-highlight-color: transparent;
-      transition: transform 0.08s ease, background 0.08s ease;
+      transition: transform 0.08s ease, background 0.08s ease, opacity 0.15s ease;
       z-index: 4;
       padding: 0;
       font-family: inherit;
@@ -140,17 +191,32 @@
       background: rgba(0, 0, 0, 0.55);
       transform: translateY(-50%) scale(0.92);
     }
-    #rotate-left  { left: 50px; }
+    #rotate-left  { left: 14px; }
     #rotate-right { right: 14px; }
   </style>
 </head>
 <body>
   <div id="hud-top">
     <div id="title">Wacky Golf</div>
-    <div id="stroke">Strokes: 0</div>
+    <div id="hud-stats">
+      <div id="stat-hole">HOLE 1 · PAR 4</div>
+      <div id="stat-strokes">STROKE 0/8</div>
+      <div id="stat-cash">$8</div>
+    </div>
   </div>
   <div id="hud-bottom">Pick a club · drag back · release to swing · sink it</div>
-  <div id="overlay"></div>
+  <div id="score-banner">
+    <div class="banner-name"></div>
+    <div class="banner-cash"></div>
+  </div>
+  <div id="run-over">
+    <h1>RUN OVER</h1>
+    <div class="stats">
+      <div id="run-over-holes">Holes played: 0</div>
+      <div id="run-over-cash">Total cash: $0</div>
+    </div>
+    <button class="play-again" id="play-again-btn" type="button">Play Again</button>
+  </div>
   <script type="module" src="/src/main.js"></script>
 </body>
 </html>

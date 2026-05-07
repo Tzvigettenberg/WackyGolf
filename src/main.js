@@ -5,7 +5,7 @@
 
 import {
   Scene, PerspectiveCamera, WebGLRenderer, Color, Fog,
-  AmbientLight, DirectionalLight,
+  AmbientLight, DirectionalLight, Vector3,
 } from 'three';
 
 import { buildHole, buildBall, TEE_POSITION, CUP_POSITION } from './scene/Hole.js';
@@ -17,6 +17,7 @@ import { ClubSelector } from './ui/ClubSelector.js';
 import { Minimap } from './ui/Minimap.js';
 import { PowerMeter } from './ui/PowerMeter.js';
 import { RotateControls } from './ui/RotateControls.js';
+import { Run } from './core/Run.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -50,21 +51,48 @@ ballMesh.position.copy(physics.position);
 const followCamera = new FollowCamera(camera);
 followCamera.snap(physics.position);
 
-// ----- HUD -----
-const strokeEl = document.getElementById('stroke');
-const overlayEl = document.getElementById('overlay');
-let strokes = 0;
-const updateStrokeUI = () => {
-  if (strokeEl) strokeEl.textContent = `Strokes: ${strokes}`;
-};
-updateStrokeUI();
+// ----- run state + HUD -----
+const run = new Run();
 
-const showOverlay = (text, ms = 1800) => {
-  if (!overlayEl) return;
-  overlayEl.textContent = text;
-  overlayEl.style.opacity = '1';
-  setTimeout(() => { overlayEl.style.opacity = '0'; }, ms);
-};
+const holeEl = document.getElementById('stat-hole');
+const strokesEl = document.getElementById('stat-strokes');
+const cashEl = document.getElementById('stat-cash');
+const banner = document.getElementById('score-banner');
+const bannerName = banner.querySelector('.banner-name');
+const bannerCash = banner.querySelector('.banner-cash');
+const runOverEl = document.getElementById('run-over');
+const runOverHolesEl = document.getElementById('run-over-holes');
+const runOverCashEl = document.getElementById('run-over-cash');
+const playAgainBtn = document.getElementById('play-again-btn');
+
+function updateHUD() {
+  holeEl.textContent = `HOLE ${run.holeNumber} · PAR ${run.holeMeta.par}`;
+  strokesEl.textContent = `STROKE ${run.strokes}/${run.holeMeta.strokeLimit}`;
+  strokesEl.classList.toggle('warning', run.strokesLeft === 2);
+  strokesEl.classList.toggle('last-chance', run.strokesLeft === 1);
+  cashEl.textContent = `$${run.cash}`;
+}
+
+function showScoreBanner(name, cash) {
+  bannerName.textContent = name;
+  bannerCash.textContent = cash > 0 ? `+$${cash}` : '';
+  banner.style.opacity = '1';
+  setTimeout(() => { banner.style.opacity = '0'; }, 1700);
+}
+
+function showRunOver() {
+  runOverHolesEl.textContent = `Holes played: ${run.holeNumber - 1}`;
+  runOverCashEl.textContent = `Total cash: $${run.cash}`;
+  runOverEl.classList.add('shown');
+}
+function hideRunOver() {
+  runOverEl.classList.remove('shown');
+}
+
+run.onChange(() => {
+  updateHUD();
+});
+updateHUD();
 
 // ----- bag, club selector, minimap, power meter, rotate buttons -----
 const bag = new Bag('driver');
@@ -89,8 +117,7 @@ const swing = new SwingController({
   canvas: renderer.domElement,
   bag,
   onShotFired: () => {
-    strokes += 1;
-    updateStrokeUI();
+    run.onShot();
   },
   onAim: (target) => {
     if (target) {
@@ -105,19 +132,41 @@ const swing = new SwingController({
   },
 });
 
-// ----- holed-out flow -----
+// ----- holed-out + bust flow -----
+function advanceToNextHole() {
+  run.nextHole();
+  physics.reset();
+  ballMesh.position.copy(physics.position);
+  followCamera.targetYaw = 0;
+  followCamera.snap(physics.position);
+  swing.setEnabled(true);
+}
+
 physics.onHoled = () => {
-  const word = strokes === 1 ? 'HOLE IN ONE!' : `HOLED IN ${strokes}`;
-  showOverlay(word, 2000);
-  // reset for another go after a short pause
-  setTimeout(() => {
-    physics.reset();
-    ballMesh.position.copy(physics.position);
-    strokes = 0;
-    updateStrokeUI();
-    followCamera.snap(physics.position);
-  }, 2200);
+  const result = run.onHoled();
+  if (!result) return;
+  swing.setEnabled(false);
+  showScoreBanner(result.name, result.cash);
+  setTimeout(advanceToNextHole, 1900);
 };
+
+physics.onCameToRest = () => {
+  if (physics.isHoled) return;
+  if (run.checkBustOnRest()) {
+    swing.setEnabled(false);
+    showRunOver();
+  }
+};
+
+playAgainBtn.addEventListener('click', () => {
+  hideRunOver();
+  run.resetRun();
+  physics.reset();
+  ballMesh.position.copy(physics.position);
+  followCamera.targetYaw = 0;
+  followCamera.snap(physics.position);
+  swing.setEnabled(true);
+});
 
 // ----- resize handling -----
 function handleResize() {
@@ -136,6 +185,10 @@ const FIXED_DT = 1 / 60;
 let accumulator = 0;
 let lastT = performance.now();
 
+// Interpolated render position — keeps the ball/camera/minimap visually
+// smooth on devices that render at higher Hz than the physics step rate.
+const renderPos = new Vector3();
+
 function frame() {
   requestAnimationFrame(frame);
   const now = performance.now();
@@ -149,20 +202,29 @@ function frame() {
     accumulator -= FIXED_DT;
   }
 
-  // visuals
-  ballMesh.position.copy(physics.position);
-  // blob shadow follows ball X/Z, sticks to ground
-  ballShadow.position.set(physics.position.x, 0.04, physics.position.z);
-  // shadow shrinks as ball flies higher
-  const heightAboveGround = Math.max(0, physics.position.y - BALL_RADIUS);
+  // alpha is "how far through the next physics step we are" (0..1)
+  const alpha = Math.max(0, Math.min(1, accumulator / FIXED_DT));
+  renderPos.lerpVectors(physics.previousPosition, physics.position, alpha);
+
+  // visuals — ball/shadow render at interpolated position
+  ballMesh.position.copy(renderPos);
+  ballShadow.position.set(renderPos.x, 0.04, renderPos.z);
+  const heightAboveGround = Math.max(0, renderPos.y - BALL_RADIUS);
   const shadowScale = Math.max(0.4, 1 - heightAboveGround * 0.05);
   ballShadow.scale.setScalar(shadowScale);
   ballShadow.material.opacity = 0.28 * shadowScale;
 
-  followCamera.update(physics.position);
+  // smooth the visible landing marker each frame
+  swing.tick();
 
-  // minimap update
-  minimap.setBall(physics.position.x, physics.position.z);
+  followCamera.update(renderPos);
+
+  // rotate buttons only visible when ball is at rest AND not mid-drag —
+  // hidden during the swing pull-back so they don't visually overlap the power meter
+  rotateControls.setVisible(physics.isAtRest && !physics.isHoled && !swing.isAiming);
+
+  // minimap update — also use interpolated XZ
+  minimap.setBall(renderPos.x, renderPos.z);
   minimap.draw();
 
   renderer.render(scene, camera);

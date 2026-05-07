@@ -16,6 +16,11 @@ export const BOUNCE = 0.35;              // vertical energy retained on bounce
 export const BOUNCE_FRICTION = 0.65;     // horizontal energy retained on bounce
 export const ROLL_DECEL = 4.5;           // yd/s² deceleration when ball is rolling on ground
 export const REST_SPEED = 0.25;          // below this, ball comes to rest
+// Below this incoming Y velocity, we skip the bounce and go straight to rolling.
+// Kept at -1.5 so most low-mid power shots roll cleanly without bouncing.
+// Visual jumps caused by the bounce/roll boundary are absorbed by the smoothed
+// landing-marker lerp in SwingController.
+export const BOUNCE_VY_THRESHOLD = -1.5;
 
 export class BallPhysics {
   constructor({ teePosition, cupPosition }) {
@@ -24,6 +29,11 @@ export class BallPhysics {
 
     this.position = teePosition.clone();
     this.position.y = BALL_RADIUS;
+    // previousPosition tracks where the ball was BEFORE the most recent step.
+    // The render loop interpolates between prev and current using the leftover
+    // accumulator value, which keeps the ball visually smooth on devices that
+    // render faster than the physics step rate (e.g., 120 Hz phones).
+    this.previousPosition = this.position.clone();
     this.velocity = new Vector3();
 
     this.isAtRest = true;
@@ -37,6 +47,7 @@ export class BallPhysics {
   reset() {
     this.position.copy(this.tee);
     this.position.y = BALL_RADIUS;
+    this.previousPosition.copy(this.position);
     this.velocity.set(0, 0, 0);
     this.isAtRest = true;
     this.isHoled = false;
@@ -44,12 +55,17 @@ export class BallPhysics {
 
   /** Launch the ball with a given velocity vector. */
   launch(velocity) {
+    // sync prev → current so interpolation doesn't ghost back to an old position
+    this.previousPosition.copy(this.position);
     this.velocity.copy(velocity);
     this.isAtRest = false;
     this.isHoled = false;
   }
 
   step(dt) {
+    // remember where we were before this step so the renderer can interpolate
+    this.previousPosition.copy(this.position);
+
     if (this.isAtRest || this.isHoled) return;
 
     // gravity (vertical only)
@@ -72,7 +88,7 @@ export class BallPhysics {
     if (this.position.y <= BALL_RADIUS) {
       this.position.y = BALL_RADIUS;
 
-      if (this.velocity.y < -1.5) {
+      if (this.velocity.y < BOUNCE_VY_THRESHOLD) {
         // bounce
         this.velocity.y = -this.velocity.y * BOUNCE;
         this.velocity.x *= BOUNCE_FRICTION;
@@ -150,7 +166,7 @@ function _step(p, v) {
 
   if (p.y <= BALL_RADIUS) {
     p.y = BALL_RADIUS;
-    if (v.y < -1.5) {
+    if (v.y < BOUNCE_VY_THRESHOLD) {
       v.y = -v.y * BOUNCE;
       v.x *= BOUNCE_FRICTION;
       v.z *= BOUNCE_FRICTION;
@@ -183,25 +199,52 @@ export function predictRest(startPos, startVel) {
 
 /**
  * Forward-simulate AND return sampled trajectory points + final rest.
- * Used by trajectory orbs in 3D and the dotted line on the minimap.
+ *
+ * Returns:
+ *   samples — full trajectory dots (used by the minimap)
+ *   rest    — final XZ resting position (used by the cyan ground ring)
+ *   firstContactIdx — index in `samples` of the first sample at-or-after the
+ *                     ball's first ground contact. Used to truncate the
+ *                     3D orb display to the airborne arc only — the part
+ *                     of the prediction that's most informative to the player.
  */
 export function predictTrajectory(startPos, startVel) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   const samples = [];
+
+  let firstContactIdx = -1;
+  let wasAirborne = p.y > BALL_RADIUS + 0.05;
+
   for (let i = 0; i < PREDICT_MAX_STEPS; i++) {
     if (i % SAMPLE_INTERVAL === 0 && samples.length < MAX_SAMPLES) {
       samples.push({ x: p.x, y: p.y, z: p.z });
     }
-    if (_step(p, v)) {
+
+    const atRest = _step(p, v);
+
+    if (firstContactIdx < 0 && wasAirborne && p.y <= BALL_RADIUS + 0.05) {
+      firstContactIdx = Math.max(0, samples.length - 1);
+    }
+    wasAirborne = p.y > BALL_RADIUS + 0.05;
+
+    if (atRest) {
       const rest = { x: p.x, y: p.y, z: p.z };
-      // ensure final rest is the last sample
       if (!samples.length || samples[samples.length - 1] !== rest) {
         samples.push(rest);
       }
-      return { samples, rest };
+      return {
+        samples,
+        rest,
+        firstContactIdx: firstContactIdx < 0 ? samples.length - 1 : firstContactIdx,
+      };
     }
   }
+
   const rest = { x: p.x, y: p.y, z: p.z };
-  return { samples, rest };
+  return {
+    samples,
+    rest,
+    firstContactIdx: firstContactIdx < 0 ? samples.length - 1 : firstContactIdx,
+  };
 }

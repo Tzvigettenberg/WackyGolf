@@ -3,10 +3,10 @@
 // Two semi-transparent rotate buttons on left/right edges of the screen.
 // Press for an instant step rotation, hold for continuous rotation.
 
-const STEP_DEGREES = 22.5;
+const STEP_DEGREES = 30;               // 12 increments per full 360°
 const STEP_RAD = (STEP_DEGREES * Math.PI) / 180;
 const HOLD_DELAY_MS = 220;             // wait this long before continuous rotation kicks in
-const CONT_RATE_RAD_S = Math.PI;       // 180°/sec while holding — feels snappy
+const CONT_RATE_RAD_S = Math.PI * 1.2; // ~216°/sec while holding
 
 export class RotateControls {
   constructor(followCamera) {
@@ -25,6 +25,18 @@ export class RotateControls {
     this._holdTimer = null;
     this._lastTickTime = 0;
     this._rafId = null;
+    this._visible = true;
+  }
+
+  /** Show or hide the rotate buttons. Hidden while the ball is in motion. */
+  setVisible(visible) {
+    if (this._visible === visible) return;
+    this._visible = visible;
+    for (const btn of [this.left, this.right]) {
+      btn.style.opacity = visible ? '1' : '0';
+      btn.style.pointerEvents = visible ? 'auto' : 'none';
+    }
+    if (!visible) this._release();
   }
 
   _makeButton(id, glyph, label) {
@@ -76,6 +88,11 @@ export class RotateControls {
       cancelAnimationFrame(this._rafId);
       this._rafId = null;
     }
+    // Snap the ROTATION GOAL (not the current yaw) to the nearest step boundary,
+    // so the camera continues easing into a clean cardinal angle and 12 taps
+    // always brings you back to facing the flag.
+    const snapped = Math.round(this.followCamera.targetYaw / STEP_RAD) * STEP_RAD;
+    this.followCamera.targetYaw = snapped;
   }
 
   _tick = () => {

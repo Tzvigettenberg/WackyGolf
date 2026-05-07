@@ -46,7 +46,28 @@ export class SwingController {
     this.landingMarker.visible = false;
     scene.add(this.landingMarker);
 
+    // Smoothed landing-marker chase. The raw prediction can jump by yards
+    // when the bounce/roll transition flips at certain power levels — the
+    // lerp absorbs those jumps into gentle eases without hiding the result.
+    this._predictedRest = null;
+    this._smoothRest = new Vector3();
+    this._smoothInit = false;
+    this.enabled = true;
+
     this._bind();
+  }
+
+  /** Lock or unlock swing input — used during score banners and run-over. */
+  setEnabled(enabled) {
+    this.enabled = enabled;
+    if (!enabled && this.state === STATE_AIMING) {
+      this.state = STATE_IDLE;
+      this._hideOrbs();
+      this.landingMarker.visible = false;
+      this._predictedRest = null;
+      this._smoothInit = false;
+      this.onAim(null);
+    }
   }
 
   _makeOrbs(count) {
@@ -88,6 +109,11 @@ export class SwingController {
     return mesh;
   }
 
+  /** True while the player is mid-drag setting up a swing. */
+  get isAiming() {
+    return this.state === STATE_AIMING;
+  }
+
   _bind() {
     // pointerdown only on the canvas — taps on UI buttons never reach us
     this.canvas.addEventListener('pointerdown', this._onDown, { passive: false });
@@ -99,6 +125,7 @@ export class SwingController {
   }
 
   _onDown = (e) => {
+    if (!this.enabled) return;
     if (!this.ball.isAtRest || this.ball.isHoled) return;
     if (e.isPrimary === false) return;
     if (e.target && e.target.closest && e.target.closest(UI_BLOCK_SELECTOR)) return;
@@ -109,6 +136,9 @@ export class SwingController {
     this.dy = 0;
     this._hideOrbs();
     this.landingMarker.visible = false;
+    // reset smoothing so the next aim's first frame snaps cleanly to its target
+    this._predictedRest = null;
+    this._smoothInit = false;
     this.onAim(null);
     e.preventDefault();
   };
@@ -128,6 +158,8 @@ export class SwingController {
     this.state = STATE_IDLE;
     this._hideOrbs();
     this.landingMarker.visible = false;
+    this._predictedRest = null;
+    this._smoothInit = false;
     this.onAim(null);
     this._fire();
     e.preventDefault();
@@ -175,9 +207,11 @@ export class SwingController {
     }
 
     const traj = predictTrajectory(this.ball.position, launch.velocity);
-    this._placeOrbs(traj.samples, launch.power);
+    this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
-    this.landingMarker.position.set(traj.rest.x, 0.06, traj.rest.z);
+    // store the prediction; the visible marker chases it in tick() at a steady
+    // frame-rate so physics-jumps become smooth eases
+    this._predictedRest = traj.rest;
     this.landingMarker.visible = true;
 
     // minimap consumes both the rest position and the trajectory samples
@@ -190,24 +224,25 @@ export class SwingController {
     });
   }
 
-  _placeOrbs(samples, power) {
+  _placeOrbs(samples, power, firstContactIdx) {
     const n = this.orbs.length;
-    const m = samples.length;
-    // tint slightly warmer with higher power
+    // Show only the airborne arc — that's the part of the prediction the
+    // player can rely on. After first ground contact, bounces and rolls are
+    // chaotic; the minimap dotted line still shows the full path.
+    const limit = Math.min(samples.length, firstContactIdx + 1, 12);
     const tintR = 1.0;
     const tintG = 1.0 - power * 0.45;
     const tintB = 1.0 - power * 0.85;
     for (let i = 0; i < n; i++) {
       const orb = this.orbs[i];
-      if (i < m) {
+      if (i < limit) {
         const s = samples[i];
         orb.position.set(s.x, s.y, s.z);
         orb.visible = true;
         orb.material.color.setRGB(tintR, tintG, tintB);
-        // gently shrink/fade toward end for a tapered streak
-        const t = i / Math.max(1, m - 1);
-        orb.scale.setScalar(1 - t * 0.45);
-        orb.material.opacity = 0.95 - t * 0.55;
+        const t = i / Math.max(1, limit - 1);
+        orb.scale.setScalar(1 - t * 0.4);
+        orb.material.opacity = 0.95 - t * 0.45;
       } else {
         orb.visible = false;
       }
@@ -216,6 +251,24 @@ export class SwingController {
 
   _hideOrbs() {
     for (const o of this.orbs) o.visible = false;
+  }
+
+  /** Called from the main loop every frame — eases the visible landing marker
+   *  toward the latest predicted rest position. */
+  tick() {
+    if (!this._predictedRest) return;
+    const target = this._predictedRest;
+    if (!this._smoothInit) {
+      this._smoothRest.set(target.x, 0.06, target.z);
+      this._smoothInit = true;
+    } else {
+      // ~22% per frame at 60Hz → converges visibly in ~5 frames
+      const k = 0.22;
+      this._smoothRest.x += (target.x - this._smoothRest.x) * k;
+      this._smoothRest.z += (target.z - this._smoothRest.z) * k;
+      this._smoothRest.y = 0.06;
+    }
+    this.landingMarker.position.copy(this._smoothRest);
   }
 
   _fire() {
