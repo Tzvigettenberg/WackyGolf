@@ -18,7 +18,7 @@ export const ITEMS = [
     desc: 'Driver only: +10% Power. Stacks.',
     cost: 6,
     rarity: 'common',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'lucky-tee',
@@ -26,7 +26,7 @@ export const ITEMS = [
     desc: 'First shot of each hole: +20% Power.',
     cost: 5,
     rarity: 'common',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'sandbagger',
@@ -34,7 +34,7 @@ export const ITEMS = [
     desc: '+$3 every time the ball lands in a bunker.',
     cost: 6,
     rarity: 'common',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'driver-specialist',
@@ -42,7 +42,7 @@ export const ITEMS = [
     desc: 'Driver only: +25% Power.',
     cost: 8,
     rarity: 'common',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'lead-wedge',
@@ -50,7 +50,7 @@ export const ITEMS = [
     desc: 'Wedge only: +25% Power.',
     cost: 8,
     rarity: 'common',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
 
   // ---- uncommon: stronger / utility ----
@@ -60,7 +60,7 @@ export const ITEMS = [
     desc: '+$2 at the start of each hole.',
     cost: 10,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'country-club-card',
@@ -68,7 +68,7 @@ export const ITEMS = [
     desc: 'All shop prices 20% off.',
     cost: 12,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'compound-interest',
@@ -76,7 +76,7 @@ export const ITEMS = [
     desc: 'Interest cap doubled ($2 → $4).',
     cost: 13,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'eagle-eye',
@@ -84,7 +84,7 @@ export const ITEMS = [
     desc: 'Minimap reveals the full bounce + roll path.',
     cost: 10,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'range-finder',
@@ -92,7 +92,7 @@ export const ITEMS = [
     desc: 'Adds 50 / 100 / 150 yd rings to the minimap.',
     cost: 8,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'fairway-finder',
@@ -100,7 +100,7 @@ export const ITEMS = [
     desc: '+$1 every time the ball rests on the fairway.',
     cost: 9,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
   {
     id: 'hole-hustler',
@@ -108,7 +108,7 @@ export const ITEMS = [
     desc: '+$1 per under-par stroke at hole-out.',
     cost: 10,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-gem',
+    icon: 'icon-gem',
   },
 
   // ---- rare: changes how the ball BEHAVES in the world ----

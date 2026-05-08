@@ -25,19 +25,36 @@
     }
     canvas { display: block; touch-action: none; }
 
-    /* Custom SVG icons rendered as CSS masks. Each renders at 1em in the
-       parent's currentColor — drop-in compatible with Font Awesome <i> tags.
-       SVG files live in public/icons/ and are served at the build's base URL. */
-    .icon-club {
-      display: inline-block;
+    /* Custom SVG icons rendered via a CSS-masked ::before pseudo-element.
+       Putting the icon on ::before instead of the host element lets the
+       host element keep its own background (e.g. a dark backdrop pill)
+       while the icon paints on top in currentColor. Drop-in compatible
+       with Font Awesome <i> tags. SVG files live in public/icons/. */
+    .icon-club,
+    .icon-gem {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      vertical-align: middle;
+      position: relative;
+    }
+    .icon-club::before,
+    .icon-gem::before {
+      content: '';
+      display: block;
       width: 1em; height: 1em;
       background-color: currentColor;
-      -webkit-mask-image: url('./icons/golf-club.svg');
-              mask-image: url('./icons/golf-club.svg');
       -webkit-mask-size: contain;       mask-size: contain;
       -webkit-mask-repeat: no-repeat;   mask-repeat: no-repeat;
       -webkit-mask-position: center;    mask-position: center;
-      vertical-align: middle;
+    }
+    .icon-club::before {
+      -webkit-mask-image: url('./icons/golf-club.svg');
+              mask-image: url('./icons/golf-club.svg');
+    }
+    .icon-gem::before {
+      -webkit-mask-image: url('./icons/gem.svg');
+              mask-image: url('./icons/gem.svg');
     }
 
     /* Global menu button — pinned top-left, ABOVE every modal so the
@@ -1448,7 +1465,7 @@
       transition: transform 0.1s ease, background 0.1s ease;
       -webkit-tap-highlight-color: transparent;
     }
-    .club-btn .club-icon { font-size: 16px; line-height: 1; color: var(--club-color); }
+    .club-btn .club-icon { font-size: 22px; line-height: 1; color: var(--club-color); }
     .club-btn .club-name { font-size: 10px; opacity: 0.85; line-height: 1; }
     .club-btn.active .club-icon { color: #111; }
     .club-btn.active {
@@ -1513,7 +1530,7 @@
       background: rgba(0, 0, 0, 0.4);
       color: var(--club-color, white);
       border-radius: 6px;
-      font-size: 13px;
+      font-size: 18px;
     }
     #shop .club-pill-name {
       font-size: 12px; font-weight: 800;

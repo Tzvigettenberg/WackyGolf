@@ -25,7 +25,10 @@
 //   • player starts a new run from the title screen
 
 const KEY = 'wackygolf_save_v1';
-const SCHEMA_VERSION = 1;
+// v2 — bag layout switched from a Set + Map to a parallel-array indexed
+// instance model so duplicate clubs can live in the bag. Saves from v1
+// are quietly discarded on load (player loses one in-progress run).
+const SCHEMA_VERSION = 2;
 
 /** Write the current state to localStorage. Skipped if the run isn't actively
  *  being played (we don't want to overwrite a valid save with a hole-out
@@ -45,9 +48,10 @@ export function save(run, bag) {
         birdieStreak: run.birdieStreak,
       },
       bag: {
-        ownedIds: [...bag.ownedIds],
-        activeId: bag.activeId,
-        usesTotalLeft: Object.fromEntries(bag.usesTotalLeft),
+        owned: bag.owned.slice(),
+        activeIndex: bag.activeIndex,
+        // Per-instance counters. Infinity isn't valid JSON, so encode as null.
+        usesTotalLeft: bag.usesTotalLeft.map((n) => (n === Infinity ? null : n)),
       },
     };
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -99,23 +103,23 @@ export function applyTo(run, bag, data) {
   run.strokes      = 0;
   run.lastResult   = null;
 
-  // Bag state — re-init then overlay saved usesTotal so Phoenix Iron's
-  // total-use progress is preserved across the refresh.
-  bag.ownedIds         = new Set(data.bag.ownedIds);
-  bag.usesPerHoleLeft  = new Map();
-  bag.usesTotalLeft    = new Map();
-  bag.lockedClubId     = null;
-  for (const club of bag.ownedClubs()) {
-    if (club.usesPerHole !== undefined) bag.usesPerHoleLeft.set(club.id, club.usesPerHole);
-    if (club.usesTotal   !== undefined) bag.usesTotalLeft.set(club.id, club.usesTotal);
+  // Bag state — restore the indexed instance arrays. usesPerHoleLeft is
+  // re-initialized to fresh per-hole counts (mid-hole counters aren't
+  // persisted by design); usesTotalLeft IS persisted so Phoenix Iron's
+  // remaining swings survive a refresh.
+  bag.owned           = (data.bag.owned || []).slice();
+  bag.lockedClubId    = null;
+  bag._initUsesForAll();
+  const savedTotals   = data.bag.usesTotalLeft || [];
+  for (let i = 0; i < bag.owned.length; i++) {
+    const v = savedTotals[i];
+    if (v === null || v === undefined) continue;     // unlimited / missing
+    bag.usesTotalLeft[i] = v;
   }
-  for (const [id, val] of Object.entries(data.bag.usesTotalLeft || {})) {
-    bag.usesTotalLeft.set(id, val);
-  }
-  // Active id falls back to first owned club if the saved one is gone.
-  bag.activeId = bag.ownedIds.has(data.bag.activeId)
-    ? data.bag.activeId
-    : (bag.ownedClubs()[0] ? bag.ownedClubs()[0].id : null);
+  // Clamp activeIndex to a valid slot (saved index might be stale).
+  const savedIdx = data.bag.activeIndex;
+  bag.activeIndex = (savedIdx !== undefined && savedIdx >= 0 && savedIdx < bag.owned.length)
+    ? savedIdx : 0;
 
   return true;
 }

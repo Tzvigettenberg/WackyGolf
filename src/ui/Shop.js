@@ -279,8 +279,8 @@ export class Shop {
     this._refresh();
   }
 
-  _trySellClub(id) {
-    const sold = this.bag.sellClub(id);
+  _trySellClub(index) {
+    const sold = this.bag.sellClubAtIndex(index);
     if (!sold) return;
     this.run.cash += clubSellValue(sold);
     sfx.uiSell();
@@ -406,20 +406,22 @@ export class Shop {
   _refreshClubs() {
     if (!this.bag) return;
     const countEl = this.bodyEl.querySelector('.clubs-count');
-    const owned = this.bag.ownedClubs();
-    if (countEl) countEl.textContent = `${owned.length} / ${owned.length + this.bag.clubSlotsLeft}`;
+    const slots = this.bag.ownedSlots();
+    if (countEl) countEl.textContent = `${slots.length} / ${slots.length + this.bag.clubSlotsLeft}`;
 
     const list = this.bodyEl.querySelector('.owned-clubs');
     if (!list) return;
     list.innerHTML = '';
-    for (const club of owned) {
+    for (const slot of slots) {
+      const { index, club, usesLeftThisHole, usesLeftTotal } = slot;
       const sellValue = clubSellValue(club);
-      const canSell = owned.length > 1; // never sell your last club
-      const ph = this.bag.usesLeftThisHole(club.id);
-      const tl = this.bag.usesLeftTotal(club.id);
+      const canSell = slots.length > 1;          // never sell your last club
       let badge = '';
-      if (ph !== Infinity)      badge = `<span class="club-pill-uses">${ph}/${club.usesPerHole}</span>`;
-      else if (tl !== Infinity) badge = `<span class="club-pill-uses">${tl} left</span>`;
+      if (usesLeftThisHole !== Infinity) {
+        badge = `<span class="club-pill-uses">${usesLeftThisHole}/${club.usesPerHole}</span>`;
+      } else if (usesLeftTotal !== Infinity) {
+        badge = `<span class="club-pill-uses">${usesLeftTotal} left</span>`;
+      }
 
       const pill = document.createElement('div');
       pill.className = 'club-pill';
@@ -434,7 +436,7 @@ export class Shop {
       sellBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (sellBtn.disabled) return;
-        this._trySellClub(club.id);
+        this._trySellClub(index);
       });
       list.appendChild(pill);
     }
@@ -466,12 +468,14 @@ export class Shop {
           sold = this.purchasedThisVisit.has(key);
         }
       } else {
+        // Clubs allow duplicates in the bag, so "already owned" is no longer
+        // a buy-blocker. Only block on bag-full and per-visit-already-bought.
         const club = this.bag.shopClubs().find((c) => c.id === id);
-        if (!club && !this.bag.isOwned(id)) continue;
-        cost = this.run.effectiveCost(club ? club.cost : 0);
+        if (!club) continue;
+        cost = this.run.effectiveCost(club.cost);
         key = `club:${id}`;
         full = clubBagFull;
-        sold = this.bag.isOwned(id) || this.purchasedThisVisit.has(key);
+        sold = this.purchasedThisVisit.has(key);
       }
 
       const btn = card.querySelector('.item-buy');

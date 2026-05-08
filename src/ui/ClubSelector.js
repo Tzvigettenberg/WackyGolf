@@ -1,11 +1,11 @@
-// Club selector UI — Phase 4c
+// Club selector UI — Phase 4o
 //
-// Bottom-of-screen row, one button per OWNED club. Special clubs show a
-// remaining-uses badge in the corner. A club with 0 uses left this hole
-// is rendered disabled (greyed out, can't be selected).
+// Bottom-of-screen row, one button per OWNED club INSTANCE (duplicates get
+// their own button). Selection is by index, so two Phoenix Irons each
+// behave as separate slots.
 //
-// The selector is rebuilt whenever the bag changes (new club unlocked,
-// active changed, use consumed, club broke).
+// Visual: each button's border / icon use the rarity color (so commons
+// read as a group, rares pop). The button name keeps the club's name.
 
 export class ClubSelector {
   constructor(bag) {
@@ -21,40 +21,39 @@ export class ClubSelector {
 
   _render() {
     this.container.innerHTML = '';
-    const owned = this.bag.ownedClubs();
-    for (const club of owned) {
+    const slots = this.bag.ownedSlots();
+    for (const slot of slots) {
+      const { index, club, isActive, isLocked, isLockedOut, usesLeftThisHole, usesLeftTotal, canUse } = slot;
+
       const btn = document.createElement('button');
       btn.className = 'club-btn';
-      btn.dataset.id = club.id;
+      btn.dataset.index = String(index);
+      // Rarity color drives both the border and the icon tint.
       btn.style.setProperty('--club-color', club.color);
 
-      // remaining-uses badge for special clubs
+      // Use-counter badge for special clubs.
       let badge = '';
-      const perHole = this.bag.usesLeftThisHole(club.id);
-      const total = this.bag.usesLeftTotal(club.id);
-      if (perHole !== Infinity) {
-        badge = `<span class="club-uses">${perHole}/${club.usesPerHole}</span>`;
-      } else if (total !== Infinity) {
-        badge = `<span class="club-uses">${total}</span>`;
+      if (usesLeftThisHole !== Infinity) {
+        badge = `<span class="club-uses">${usesLeftThisHole}/${club.usesPerHole}</span>`;
+      } else if (usesLeftTotal !== Infinity) {
+        badge = `<span class="club-uses">${usesLeftTotal}</span>`;
       }
 
       btn.innerHTML = `
         ${badge}
-        <i class="club-icon ${club.icon || 'fa-solid fa-club'}"></i>
+        <i class="club-icon ${club.icon || 'fa-solid fa-flag-checkered'}"></i>
         <span class="club-name">${club.name}</span>
       `;
 
-      const usable = this.bag.canUseThisHole(club.id);
-      const lockedOut = this.bag.lockedClubId && this.bag.lockedClubId !== club.id;
-      if (!usable) btn.classList.add('disabled');
-      if (lockedOut) btn.classList.add('locked-out');
-      if (this.bag.activeId === club.id) btn.classList.add('active');
-      if (this.bag.lockedClubId === club.id) btn.classList.add('locked-in');
+      if (!canUse) btn.classList.add('disabled');
+      if (isLockedOut) btn.classList.add('locked-out');
+      if (isActive) btn.classList.add('active');
+      if (isLocked) btn.classList.add('locked-in');
 
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (!usable || lockedOut) return;
-        this.bag.setActive(club.id);
+        if (!canUse || isLockedOut) return;
+        this.bag.setActiveByIndex(index);
       });
 
       this.container.appendChild(btn);

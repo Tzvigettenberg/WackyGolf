@@ -1,27 +1,37 @@
-// Clubs and the player's bag — Phase 4c
+// Clubs and the player's bag — Phase 4o (rarity + duplicates)
 //
-// The player starts with one club (the 5-iron). Other clubs are unlocked
-// via the Pro Shop's Clubs tab. Some "special" clubs trade cost for raw
-// power but have per-hole or per-run use limits.
+// Each club has a rarity (common / uncommon / rare). The visual color of
+// the club — pill border, icon tint, ItemBar pill — is derived from rarity,
+// so commons all read together visually and rares pop.
 //
-// Use limits:
+// Bag is an ARRAY (not a Set), so duplicates are allowed — buy two Phoenix
+// Irons, you get two independent 5-use counters; sell either one and the
+// other stays. Each instance is addressed by index.
+//
+// Use limits (per instance):
 //   usesPerHole  — fresh count at the start of every hole (Cannon = 1)
 //   usesTotal    — pool that depletes across the whole run; when it hits 0
 //                  the club BREAKS and is removed from the bag
-//
-// When neither field is set, the club has unlimited uses (the four base clubs).
 
 const deg = (d) => (d * Math.PI) / 180;
 
+/** Visual color per rarity tier. The frame + icon of a club use this. */
+export const RARITY_COLORS = {
+  common:    '#cfd9d6',
+  uncommon:  '#7fd6ff',
+  rare:      '#c79cff',
+  legendary: '#ffb84a',
+};
+
 export const CLUBS = [
-  // ---- base clubs ----
+  // ---- base clubs (all common) ----
   {
     id: 'driver',
     name: 'Driver',
     short: 'DR',
-    color: '#3a8eff',
-    maxSpeed: 60,           // yd/s at full power
-    launchAngle: deg(14),   // raised from 11° for a real arc, less rolling
+    rarity: 'common',
+    maxSpeed: 60,
+    launchAngle: deg(14),
     cost: 7,
     desc: 'Long. Tee-shot specialist.',
     icon: 'icon-club',
@@ -30,10 +40,10 @@ export const CLUBS = [
     id: 'iron',
     name: '5-Iron',
     short: '5i',
-    color: '#22c55e',
+    rarity: 'common',
     maxSpeed: 44,
-    launchAngle: deg(24),   // medium-high arc
-    starter: true,          // free at run start
+    launchAngle: deg(24),
+    starter: true,
     cost: 0,
     desc: 'All-purpose mid-iron. The starter club.',
     icon: 'icon-club',
@@ -42,9 +52,9 @@ export const CLUBS = [
     id: 'wedge',
     name: 'Wedge',
     short: 'W',
-    color: '#f59e0b',
+    rarity: 'common',
     maxSpeed: 30,
-    launchAngle: deg(52),   // high lob — short, stops fast
+    launchAngle: deg(52),
     cost: 7,
     desc: 'High lob. Short and stops fast on the green.',
     icon: 'icon-club',
@@ -53,21 +63,34 @@ export const CLUBS = [
     id: 'putter',
     name: 'Putter',
     short: 'P',
-    color: '#a855f7',
-    maxSpeed: 14,           // ~22 yd roll cap — green-only at hole scale
-    launchAngle: deg(0),    // rolls flat
+    rarity: 'common',
+    maxSpeed: 14,
+    launchAngle: deg(0),
     cost: 5,
     desc: 'Low rolling stroke. Use on the green.',
     icon: 'icon-club',
   },
 
-  // ---- special clubs ----
+  // ---- specials (uncommon / rare) ----
+  {
+    id: 'phoenix-iron',
+    name: 'Phoenix Iron',
+    short: 'PX',
+    rarity: 'uncommon',
+    maxSpeed: 58,
+    launchAngle: deg(22),
+    cost: 12,
+    usesTotal: 5,
+    desc: 'Powerful 5-iron. Breaks after 5 swings.',
+    special: true,
+    icon: 'icon-club',
+  },
   {
     id: 'cannon',
     name: 'Cannon',
     short: 'CN',
-    color: '#ff4444',
-    maxSpeed: 90,           // +50% over driver
+    rarity: 'rare',
+    maxSpeed: 90,
     launchAngle: deg(12),
     cost: 16,
     usesPerHole: 1,
@@ -75,20 +98,12 @@ export const CLUBS = [
     special: true,
     icon: 'icon-club',
   },
-  {
-    id: 'phoenix-iron',
-    name: 'Phoenix Iron',
-    short: 'PX',
-    color: '#ff9b3a',
-    maxSpeed: 58,           // +32% over 5-iron
-    launchAngle: deg(22),
-    cost: 12,
-    usesTotal: 5,           // breaks after 5 total uses across the run
-    desc: 'Powerful 5-iron. Breaks after 5 swings.',
-    special: true,
-    icon: 'icon-club',
-  },
 ];
+
+// Derive visual color from rarity (uniform across all clubs of the same tier).
+for (const c of CLUBS) {
+  c.color = RARITY_COLORS[c.rarity || 'common'];
+}
 
 export function getClub(id) {
   return CLUBS.find((c) => c.id === id) || CLUBS[0];
@@ -107,178 +122,215 @@ export function clubSellValue(club) {
 }
 
 /**
- * Bag — tracks owned clubs, the active selection, and the use-counters that
- * make special clubs limited.
+ * Bag — tracks owned clubs (as an array, allowing duplicates), the active
+ * selection (by index), and per-instance use counters.
  *
- * Per-hole counters reset on `resetHoleUses()` (called from main.js on hole
- * start). Total counters live for the whole run.
+ * Indexed API (preferred for UI):
+ *   ownedSlots()                 — render-friendly array per instance
+ *   setActiveByIndex(i)
+ *   sellClubAtIndex(i)
+ *   usesLeftThisHole(index)
+ *   usesLeftTotal(index)
+ *   canUseAtIndex(index)
  *
- * Listeners are notified on:
- *   - active club change
- *   - club unlock (newly purchased)
- *   - club break (use counter hit 0)
- *   - per-hole use consumed (so the UI can update remaining-uses badge)
+ * Backward-compat shortcuts (for code that doesn't care about instances):
+ *   activeId, lockedClubId       — clubId of active / locked instance
+ *   isOwned(id)                  — true if any instance has this id
  */
 export class Bag {
   constructor(initialIds) {
     const ids = (initialIds && initialIds.length ? initialIds : starterClubIds());
-    this.ownedIds = new Set(ids);
-    this.activeId = ids[0];
-
-    // Per-club use trackers. Keys are club ids; absence = unlimited.
-    this.usesPerHoleLeft = new Map();
-    this.usesTotalLeft = new Map();
-    this._initUsesFor(this.ownedIds);
-
-    // Boss-handicap: when set to a club id, the player can only use THAT
-    // club for the rest of the hole. Cleared at hole start.
+    this.owned = ids.slice();           // Array<string clubId>, duplicates ok
+    this.activeIndex = 0;
+    this.usesPerHoleLeft = [];          // parallel array — count per index
+    this.usesTotalLeft = [];            // parallel array
+    this._initUsesForAll();
+    // Boss "one-club" handicap — locks player to a clubId for the hole.
+    // Tracked by id (not index) so duplicates of the locked club stay usable.
     this.lockedClubId = null;
-
     this._listeners = [];
   }
 
+  // ---- indexed queries ----
+
+  ownedSlots() {
+    return this.owned.map((id, index) => ({
+      index,
+      club: getClub(id),
+      isActive: this.activeIndex === index,
+      // Locked = "this club id matches the boss lock". With clubId-based
+      // locking, duplicates of the locked club are all flagged in.
+      isLocked: this.lockedClubId !== null && id === this.lockedClubId,
+      isLockedOut: this.lockedClubId !== null && id !== this.lockedClubId,
+      usesLeftThisHole: this.usesPerHoleLeft[index],
+      usesLeftTotal: this.usesTotalLeft[index],
+      canUse: this.canUseAtIndex(index),
+    }));
+  }
+
+  /** Convenience: the club objects only, in order. */
+  ownedClubs() {
+    return this.owned.map((id) => getClub(id));
+  }
+
+  /** All non-starter clubs available in the shop pool. Duplicates allowed
+   *  in the bag, so we don't filter by ownership. */
+  shopClubs() {
+    return CLUBS.filter((c) => !c.starter && c.cost !== undefined);
+  }
+
+  isOwned(id) { return this.owned.includes(id); }
+  ownedCountOfId(id) { return this.owned.filter((x) => x === id).length; }
+
+  get clubSlotsLeft() { return Math.max(0, MAX_CLUBS - this.owned.length); }
+  get hasFreeClubSlot() { return this.owned.length < MAX_CLUBS; }
+
+  usesLeftThisHole(index) {
+    return this.usesPerHoleLeft[index] !== undefined
+      ? this.usesPerHoleLeft[index] : Infinity;
+  }
+  usesLeftTotal(index) {
+    return this.usesTotalLeft[index] !== undefined
+      ? this.usesTotalLeft[index] : Infinity;
+  }
+  canUseAtIndex(index) {
+    return this.usesLeftThisHole(index) > 0 && this.usesLeftTotal(index) > 0;
+  }
+
+  // ---- backward-compat ID-based queries ----
+
+  /** Currently-selected club's id. */
+  get activeId() { return this.owned[this.activeIndex] || null; }
+  /** Currently-selected club object. */
+  get active() { return getClub(this.activeId); }
+
   // ---- ownership ----
 
-  isOwned(id)        { return this.ownedIds.has(id); }
-  /** All owned club objects, in canonical CLUBS order. */
-  ownedClubs()       { return CLUBS.filter((c) => this.ownedIds.has(c.id)); }
-  /** All UNowned club objects, for the Shop's Clubs tab. */
-  shopClubs()        { return CLUBS.filter((c) => !this.ownedIds.has(c.id) && c.cost !== undefined); }
-
-  /** Free club slots remaining. */
-  get clubSlotsLeft() { return Math.max(0, MAX_CLUBS - this.ownedIds.size); }
-  get hasFreeClubSlot() { return this.ownedIds.size < MAX_CLUBS; }
-
+  /** Add a club to the bag. With duplicates allowed, this just appends. */
   unlock(id) {
-    if (this.ownedIds.has(id)) return false;
     if (!CLUBS.some((c) => c.id === id)) return false;
     if (!this.hasFreeClubSlot) return false;
-    this.ownedIds.add(id);
-    this._initUsesFor([id]);
+    this.owned.push(id);
+    const club = getClub(id);
+    this.usesPerHoleLeft.push(club.usesPerHole !== undefined ? club.usesPerHole : Infinity);
+    this.usesTotalLeft.push(club.usesTotal !== undefined ? club.usesTotal : Infinity);
     this._emit();
     return true;
   }
 
-  /**
-   * Sell a club from the bag. Refuses if it would leave you clubless or if
-   * the id isn't owned. Returns the sold club's definition (so the caller
-   * can refund cash from it), or null on refusal.
-   */
-  sellClub(id) {
-    if (this.ownedIds.size <= 1) return null;
-    if (!this.ownedIds.has(id)) return null;
-    const club = getClub(id);
-    if (!club) return null;
-    this.ownedIds.delete(id);
-    this.usesPerHoleLeft.delete(id);
-    this.usesTotalLeft.delete(id);
-    if (this.activeId === id) {
-      const fallback = this.ownedClubs()[0];
-      this.activeId = fallback ? fallback.id : null;
-    }
-    if (this.lockedClubId === id) this.lockedClubId = null;
-    this._emit();
+  /** Sell the club at this index. Refuses if it's your last club. Returns
+   *  the sold club's definition (caller refunds based on it), or null. */
+  sellClubAtIndex(index) {
+    if (this.owned.length <= 1) return null;
+    if (index < 0 || index >= this.owned.length) return null;
+    const club = getClub(this.owned[index]);
+    this._removeAt(index);
     return club;
+  }
+
+  /** Backward-compat: sell the FIRST instance of this id (for code that
+   *  thinks in club ids rather than indexes). Use sellClubAtIndex when
+   *  the user clicked a specific instance. */
+  sellClub(id) {
+    const idx = this.owned.indexOf(id);
+    if (idx < 0) return null;
+    return this.sellClubAtIndex(idx);
   }
 
   // ---- selection ----
 
-  get active() { return getClub(this.activeId); }
+  setActiveByIndex(index) {
+    if (index === this.activeIndex) return;
+    if (index < 0 || index >= this.owned.length) return;
+    if (!this.canUseAtIndex(index)) return;
+    // Boss lock: only allow switching among instances of the locked club id.
+    if (this.lockedClubId !== null && this.owned[index] !== this.lockedClubId) return;
+    this.activeIndex = index;
+    this._emit();
+  }
 
-  /** Try to switch to club id. No-op if not owned, out of uses, or locked. */
+  /** Backward-compat: pick the first usable instance with this clubId. */
   setActive(id) {
-    if (id === this.activeId) return;
-    if (!this.ownedIds.has(id)) return;
-    if (!this.canUseThisHole(id)) return;
-    if (this.lockedClubId && this.lockedClubId !== id) return;
-    this.activeId = id;
-    this._emit();
+    if (this.owned[this.activeIndex] === id) return;
+    for (let i = 0; i < this.owned.length; i++) {
+      if (this.owned[i] === id && this.canUseAtIndex(i)) {
+        this.setActiveByIndex(i);
+        return;
+      }
+    }
   }
 
-  /** Lock the player to whatever club is currently active for the rest of
-   *  the hole. Boss handicap. Cleared by resetHoleUses(). */
-  lockToActive() {
-    if (this.lockedClubId === this.activeId) return;
-    this.lockedClubId = this.activeId;
-    this._emit();
-  }
-
-  /** Cycle to the next owned + usable club. */
+  /** Cycle to the next usable owned club. */
   cycle(dir = 1) {
-    const owned = this.ownedClubs().filter((c) => this.canUseThisHole(c.id));
-    if (!owned.length) return;
-    const idx = owned.findIndex((c) => c.id === this.activeId);
-    const next = (idx + dir + owned.length) % owned.length;
-    this.setActive(owned[next].id);
+    const usable = [];
+    for (let i = 0; i < this.owned.length; i++) {
+      if (this.canUseAtIndex(i)) usable.push(i);
+    }
+    if (!usable.length) return;
+    const cur = usable.indexOf(this.activeIndex);
+    const next = (cur + dir + usable.length) % usable.length;
+    this.setActiveByIndex(usable[next]);
   }
 
   // ---- uses ----
 
-  /** Per-hole uses remaining for this club id, Infinity if unlimited. */
-  usesLeftThisHole(id) {
-    return this.usesPerHoleLeft.has(id) ? this.usesPerHoleLeft.get(id) : Infinity;
-  }
-  /** Total-run uses remaining for this club id, Infinity if unlimited. */
-  usesLeftTotal(id) {
-    return this.usesTotalLeft.has(id) ? this.usesTotalLeft.get(id) : Infinity;
-  }
-  /** True if the club has at least one use left this hole. */
-  canUseThisHole(id) {
-    return this.usesLeftThisHole(id) > 0 && this.usesLeftTotal(id) > 0;
-  }
-
-  /** Decrement the active club's use counters by 1 (called on shot fire). */
   consumeActiveUse() {
-    const id = this.activeId;
+    const i = this.activeIndex;
+    if (i < 0 || i >= this.owned.length) return;
+    const id = this.owned[i];
+    const club = getClub(id);
     let changed = false;
-    if (this.usesPerHoleLeft.has(id)) {
-      this.usesPerHoleLeft.set(id, Math.max(0, this.usesPerHoleLeft.get(id) - 1));
+    if (club.usesPerHole !== undefined) {
+      this.usesPerHoleLeft[i] = Math.max(0, this.usesPerHoleLeft[i] - 1);
       changed = true;
     }
-    if (this.usesTotalLeft.has(id)) {
-      const next = this.usesTotalLeft.get(id) - 1;
-      this.usesTotalLeft.set(id, next);
+    if (club.usesTotal !== undefined) {
+      const next = this.usesTotalLeft[i] - 1;
+      this.usesTotalLeft[i] = next;
       if (next <= 0) {
-        // Club breaks — remove from bag, switch active to something else.
-        this._breakClub(id);
+        this._breakClub(i);
         return;
       }
       changed = true;
     }
-    // If the active club just ran out for this hole, auto-switch to a usable
-    // owned club so the player isn't stuck with a dead Cannon selected.
-    if (!this.canUseThisHole(this.activeId)) {
-      const fallback = this.ownedClubs().find((c) => this.canUseThisHole(c.id));
-      if (fallback) this.activeId = fallback.id;
+    // Auto-switch off the active if it ran out of uses for this hole.
+    if (!this.canUseAtIndex(this.activeIndex)) {
+      const fallback = this._firstUsableIndex();
+      if (fallback >= 0) this.activeIndex = fallback;
     }
     if (changed) this._emit();
   }
 
-  /** Refresh per-hole counters from the club definitions. Called on hole start. */
   resetHoleUses() {
-    for (const club of this.ownedClubs()) {
+    for (let i = 0; i < this.owned.length; i++) {
+      const club = getClub(this.owned[i]);
       if (club.usesPerHole !== undefined) {
-        this.usesPerHoleLeft.set(club.id, club.usesPerHole);
+        this.usesPerHoleLeft[i] = club.usesPerHole;
       }
     }
-    // Hole transition clears any boss-handicap lock from the previous hole.
     this.lockedClubId = null;
-    // If active club has no uses left this hole, fall back to a usable one.
-    if (!this.canUseThisHole(this.activeId)) {
-      const fallback = this.ownedClubs().find((c) => this.canUseThisHole(c.id));
-      if (fallback) this.activeId = fallback.id;
+    if (!this.canUseAtIndex(this.activeIndex)) {
+      const fallback = this._firstUsableIndex();
+      if (fallback >= 0) this.activeIndex = fallback;
     }
     this._emit();
   }
 
-  /** Wipe state back to a fresh run with just the starter club. */
   resetForNewRun() {
     const starters = starterClubIds();
-    this.ownedIds = new Set(starters);
-    this.usesPerHoleLeft = new Map();
-    this.usesTotalLeft = new Map();
-    this._initUsesFor(this.ownedIds);
-    this.activeId = starters[0];
+    this.owned = starters.slice();
+    this.activeIndex = 0;
+    this.lockedClubId = null;
+    this._initUsesForAll();
+    this._emit();
+  }
+
+  // ---- locking (boss handicap) ----
+
+  lockToActive() {
+    const id = this.activeId;
+    if (this.lockedClubId === id) return;
+    this.lockedClubId = id;
     this._emit();
   }
 
@@ -286,34 +338,49 @@ export class Bag {
 
   onChange(fn) {
     this._listeners.push(fn);
-    return () => {
-      this._listeners = this._listeners.filter((x) => x !== fn);
-    };
+    return () => { this._listeners = this._listeners.filter((x) => x !== fn); };
   }
 
   // ---- internals ----
 
-  _initUsesFor(ids) {
-    for (const id of ids) {
-      const club = getClub(id);
-      if (!club) continue;
-      if (club.usesPerHole !== undefined) this.usesPerHoleLeft.set(id, club.usesPerHole);
-      if (club.usesTotal !== undefined)   this.usesTotalLeft.set(id, club.usesTotal);
-    }
+  _emit() { for (const fn of this._listeners) fn(this); }
+
+  _initUsesForAll() {
+    this.usesPerHoleLeft = this.owned.map((id) => {
+      const c = getClub(id);
+      return c.usesPerHole !== undefined ? c.usesPerHole : Infinity;
+    });
+    this.usesTotalLeft = this.owned.map((id) => {
+      const c = getClub(id);
+      return c.usesTotal !== undefined ? c.usesTotal : Infinity;
+    });
   }
 
-  _breakClub(id) {
-    this.ownedIds.delete(id);
-    this.usesPerHoleLeft.delete(id);
-    this.usesTotalLeft.delete(id);
-    if (this.activeId === id) {
-      const fallback = this.ownedClubs()[0];
-      this.activeId = fallback ? fallback.id : null;
+  _firstUsableIndex() {
+    for (let i = 0; i < this.owned.length; i++) {
+      if (this.canUseAtIndex(i)) return i;
+    }
+    return -1;
+  }
+
+  _removeAt(index) {
+    this.owned.splice(index, 1);
+    this.usesPerHoleLeft.splice(index, 1);
+    this.usesTotalLeft.splice(index, 1);
+    if (this.activeIndex === index) {
+      this.activeIndex = this._firstUsableIndex();
+      if (this.activeIndex < 0) this.activeIndex = 0;
+    } else if (this.activeIndex > index) {
+      this.activeIndex -= 1;
+    }
+    // Clear the boss lock if no instance of the locked club is left.
+    if (this.lockedClubId && !this.owned.includes(this.lockedClubId)) {
+      this.lockedClubId = null;
     }
     this._emit();
   }
 
-  _emit() {
-    for (const fn of this._listeners) fn(this);
+  _breakClub(index) {
+    this._removeAt(index);
   }
 }
