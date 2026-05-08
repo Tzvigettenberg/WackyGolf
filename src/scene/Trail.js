@@ -1,97 +1,91 @@
-// Ball trail — Phase 4l (line version)
+// Ball trail — Phase 4p (tube version)
 //
-// A single THREE.Line with N vertices that follows the ball when it's
-// moving. Per-vertex RGBA colors give the head full opacity and fade the
-// tail to transparent. One draw call, no draw-call-per-orb cost.
+// A real 3D tube swept along the ball's recent path. Each frame we feed a
+// fresh CatmullRom curve through the history points, build a TubeGeometry
+// from it, and apply RGBA vertex colors so the tail fades to transparent.
+// Gives the trail real visual thickness on every device — none of the
+// "platforms clamp gl.LINE_WIDTH to 1" drama you get from THREE.Line.
 //
-// Caveat: WebGL fixed-function `gl.LINE_WIDTH` is clamped to 1 on most
-// platforms, so the line renders thin (1 device pixel). At our scale this
-// reads as a clean "wake" rather than the dotty look of the sphere pool.
-//
-// API matches the previous sphere-pool Trail so main.js doesn't change:
+// API matches the previous Trail so main.js doesn't change:
 //   trail.push(x, y, z)
 //   trail.reset()
 //   trail.setColor(hex)
 
 import {
-  Line, BufferGeometry, BufferAttribute,
-  LineBasicMaterial, Color,
+  TubeGeometry, MeshBasicMaterial, Mesh,
+  CatmullRomCurve3, Vector3, Color, BufferAttribute,
 } from 'three';
 
-const TRAIL_LENGTH = 36;          // vertex count — controls trail duration
-const HEAD_OPACITY = 0.95;        // alpha at the newest vertex
+const MAX_HISTORY = 30;
+const RADIUS = 0.18;          // tube radius — half the ball's BALL_RADIUS (0.4)
+const RADIAL_SEGMENTS = 6;    // around the tube — 6 reads as round, cheap
+const TAIL_ALPHA = 0.0;       // alpha at the oldest vertex
+const HEAD_ALPHA = 0.85;      // alpha at the newest vertex
 
 export class Trail {
   constructor(scene) {
     this.scene = scene;
-
-    this.positions = new Float32Array(TRAIL_LENGTH * 3);
-    // RGBA per vertex — three.js LineBasicMaterial honors 4-component vertex
-    // colors when material.transparent === true.
-    this.colors = new Float32Array(TRAIL_LENGTH * 4);
-
-    this.geom = new BufferGeometry();
-    this.geom.setAttribute('position', new BufferAttribute(this.positions, 3));
-    this.geom.setAttribute('color', new BufferAttribute(this.colors, 4));
-    this.geom.setDrawRange(0, 0);
-
-    this.mat = new LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      depthWrite: false,
-      // linewidth is mostly ignored on WebGL but we set it anyway —
-      // costs nothing and one day a context might honor it.
-      linewidth: 3,
-    });
-
-    this.line = new Line(this.geom, this.mat);
-    this.line.frustumCulled = false;
-    this.line.visible = false;
-    this.line.renderOrder = 997;          // behind aim orbs (998), landing (999)
-    scene.add(this.line);
-
-    this.tintR = 1; this.tintG = 1; this.tintB = 1;
-    // History as a flat ring buffer of {x,y,z} positions. Index 0 = newest.
     this.history = [];
+    this.tube = null;
+    this.tintR = 1; this.tintG = 1; this.tintB = 1;
   }
 
   /** Wipe the trail — call when the ball launches OR comes to rest. */
   reset() {
     this.history.length = 0;
-    this.geom.setDrawRange(0, 0);
-    this.line.visible = false;
+    this._disposeTube();
   }
 
-  /** Append the current ball position and rebuild the visible line. */
+  /** Append the current ball position and rebuild the tube. */
   push(x, y, z) {
     this.history.unshift({ x, y, z });
-    if (this.history.length > TRAIL_LENGTH) this.history.length = TRAIL_LENGTH;
-
-    const N = this.history.length;
-    if (N < 2) {
-      this.line.visible = false;
+    if (this.history.length > MAX_HISTORY) this.history.length = MAX_HISTORY;
+    if (this.history.length < 2) {
+      this._disposeTube();
       return;
     }
 
-    for (let i = 0; i < N; i++) {
-      const pos = this.history[i];
-      this.positions[i * 3 + 0] = pos.x;
-      this.positions[i * 3 + 1] = pos.y;
-      this.positions[i * 3 + 2] = pos.z;
-
-      // 0 = head (full opacity), 1 = tail (transparent).
-      const t = i / Math.max(1, TRAIL_LENGTH - 1);
-      const alpha = HEAD_OPACITY * (1 - t);
-      this.colors[i * 4 + 0] = this.tintR;
-      this.colors[i * 4 + 1] = this.tintG;
-      this.colors[i * 4 + 2] = this.tintB;
-      this.colors[i * 4 + 3] = alpha;
+    // Reverse so curve runs from oldest (tail) to newest (head) — makes the
+    // alpha gradient line up cleanly with segment index.
+    const points = new Array(this.history.length);
+    for (let i = 0; i < this.history.length; i++) {
+      const p = this.history[this.history.length - 1 - i];
+      points[i] = new Vector3(p.x, p.y, p.z);
     }
 
-    this.geom.setDrawRange(0, N);
-    this.geom.attributes.position.needsUpdate = true;
-    this.geom.attributes.color.needsUpdate = true;
-    this.line.visible = true;
+    // CatmullRomCurve3 needs >= 2 points; we already gated above.
+    const curve = new CatmullRomCurve3(points);
+    // Smooth the curve a bit by oversampling the segments.
+    const tubularSegments = Math.max(8, points.length * 2);
+    const tubeGeom = new TubeGeometry(curve, tubularSegments, RADIUS, RADIAL_SEGMENTS, false);
+
+    // Per-vertex RGBA — segment index drives alpha so older parts fade out.
+    const vertexCount = tubeGeom.attributes.position.count;
+    const colors = new Float32Array(vertexCount * 4);
+    const ringSize = RADIAL_SEGMENTS + 1;
+    for (let i = 0; i < vertexCount; i++) {
+      const segIdx = Math.floor(i / ringSize);
+      const t = segIdx / tubularSegments;        // 0 tail, 1 head
+      const alpha = TAIL_ALPHA + (HEAD_ALPHA - TAIL_ALPHA) * t;
+      colors[i * 4 + 0] = this.tintR;
+      colors[i * 4 + 1] = this.tintG;
+      colors[i * 4 + 2] = this.tintB;
+      colors[i * 4 + 3] = alpha;
+    }
+    tubeGeom.setAttribute('color', new BufferAttribute(colors, 4));
+
+    // Rebuild — disposing the previous geometry/material to avoid GPU leak.
+    this._disposeTube();
+
+    const mat = new MeshBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.tube = new Mesh(tubeGeom, mat);
+    this.tube.frustumCulled = false;
+    this.tube.renderOrder = 997;          // behind aim orbs (998), landing (999)
+    this.scene.add(this.tube);
   }
 
   /** Tint the entire trail. Host calls this when ball items change. */
@@ -100,5 +94,15 @@ export class Trail {
     this.tintR = c.r;
     this.tintG = c.g;
     this.tintB = c.b;
+  }
+
+  // ---- internals ----
+
+  _disposeTube() {
+    if (!this.tube) return;
+    this.scene.remove(this.tube);
+    if (this.tube.geometry) this.tube.geometry.dispose();
+    if (this.tube.material) this.tube.material.dispose();
+    this.tube = null;
   }
 }

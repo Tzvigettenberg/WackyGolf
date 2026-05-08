@@ -71,7 +71,7 @@ export const CLUBS = [
     icon: 'icon-club',
   },
 
-  // ---- specials (uncommon / rare) ----
+  // ---- rarer clubs — visually distinguished by rarity color, not labels ----
   {
     id: 'phoenix-iron',
     name: 'Phoenix Iron',
@@ -82,7 +82,6 @@ export const CLUBS = [
     cost: 12,
     usesTotal: 5,
     desc: 'Powerful 5-iron. Breaks after 5 swings.',
-    special: true,
     icon: 'icon-club',
   },
   {
@@ -95,7 +94,6 @@ export const CLUBS = [
     cost: 16,
     usesPerHole: 1,
     desc: 'Massive range. 1 use per hole.',
-    special: true,
     icon: 'icon-club',
   },
 ];

@@ -167,7 +167,6 @@ export class Shop {
     card.dataset.clubId = id;
     card.dataset.offerType = 'club';
     card.style.setProperty('--rarity-color', club.color);
-    if (club.special) card.classList.add('special');
 
     let limit = '';
     if (club.usesPerHole !== undefined) limit = `${club.usesPerHole}/hole`;
@@ -176,7 +175,7 @@ export class Shop {
     card.innerHTML = `
       <div class="card-icon"><i class="${club.icon || 'fa-solid fa-club'}" style="color: ${club.color}"></i></div>
       <div class="card-body">
-        <div class="item-rarity">${club.special ? 'special club' : 'club'}</div>
+        <div class="item-rarity">${club.rarity || 'club'}</div>
         <div class="item-name">${club.name}</div>
         <div class="item-desc">${club.desc || ''}</div>
         ${limit ? `<div class="club-card-limit">${limit}</div>` : ''}

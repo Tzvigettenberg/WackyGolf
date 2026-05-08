@@ -254,11 +254,19 @@ export class CashOut {
 
   _animate(el, from, to, durationMs, fmt) {
     const start = performance.now();
+    let lastTickAt = 0;
+    const TICK_INTERVAL = 50;          // ~20 ticks/sec — slot-machine feel
+    const isCounting = to !== from;
     const step = (now) => {
       const t = Math.min(1, (now - start) / durationMs);
       const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
       const value = Math.round(from + (to - from) * eased);
       el.textContent = fmt(value);
+      // Slot-machine ticks during the climb. Skipped on no-op animations.
+      if (isCounting && t < 1 && now - lastTickAt >= TICK_INTERVAL) {
+        sfx.cashTick(t);
+        lastTickAt = now;
+      }
       if (t < 1) {
         const id = requestAnimationFrame(step);
         this._rafs.push(id);

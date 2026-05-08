@@ -163,7 +163,6 @@ export class Collection {
     for (const club of CLUBS) {
       const card = document.createElement('div');
       card.className = 'col-card';
-      if (club.special) card.classList.add('special');
       card.style.setProperty('--card-color', club.color);
       let limitText = '';
       if (club.usesPerHole !== undefined) limitText = ` · ${club.usesPerHole}/hole`;
@@ -171,7 +170,7 @@ export class Collection {
       const costText = club.starter ? 'Starter' : `$${club.cost}`;
       card.innerHTML = `
         <div class="col-card-icon"><i class="${club.icon || 'fa-solid fa-club'}"></i></div>
-        <div class="col-card-rarity">${club.special ? 'special' : 'club'}</div>
+        <div class="col-card-rarity">${club.rarity || 'club'}</div>
         <div class="col-card-name">${escapeHtml(club.name)}</div>
         <div class="col-card-desc">${escapeHtml(club.desc || '')}</div>
         <div class="col-card-meta">${costText}${limitText}</div>

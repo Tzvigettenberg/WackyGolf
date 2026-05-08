@@ -247,6 +247,26 @@ class Sfx {
 
   // ----- UI ticks -----
 
+  /** Tiny pitched click for a number that's counting up. Pitch climbs
+   *  with `progress` (0..1) so a long count-up sounds like a slot machine
+   *  ramp. Designed to be called ~20 times per second during animations. */
+  cashTick(progress = 0.5) {
+    if (!this._ready()) return;
+    const t = this.ctx.currentTime;
+    const dur = 0.04;
+    const f = 720 + Math.max(0, Math.min(1, progress)) * 520;
+
+    const osc = this.ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.value = f;
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.07, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+
   uiClick() { this._uiTick(800, 0.04, 0.10); }
   uiBuy() {
     this._uiTick(700, 0.05, 0.16);
