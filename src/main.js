@@ -9,6 +9,7 @@ import {
 } from 'three';
 
 import { buildHole, disposeHole, buildBall, buildSceneBackdrop } from './scene/Hole.js';
+import { Trail } from './scene/Trail.js';
 import { FollowCamera } from './scene/FollowCamera.js';
 import { BallPhysics, BALL_RADIUS, getSurfaceAt } from './physics/BallPhysics.js';
 import { SwingController } from './input/SwingController.js';
@@ -20,6 +21,7 @@ import { RotateControls } from './ui/RotateControls.js';
 import { Run } from './core/Run.js';
 import { templateForHole, holeMetaFromTemplate, HOLES, RUN_LENGTH, isBossHole, skipCashFor } from './content/holes.js';
 import { recordRun, formatScore } from './core/highscores.js';
+import * as RunSave from './core/RunSave.js';
 import { sfx } from './audio/Sfx.js';
 import { Collection } from './ui/Collection.js';
 import { TitleScreen } from './ui/TitleScreen.js';
@@ -56,6 +58,9 @@ let currentHole = buildHole(scene, templateForHole(1));
 const { mesh: ballMesh, shadow: ballShadow } = buildBall();
 scene.add(ballMesh);
 scene.add(ballShadow);
+
+// Fading trail behind the ball whenever it's moving — purely visual.
+const trail = new Trail(scene);
 
 const physics = new BallPhysics({
   teePosition: currentHole.teePosition,
@@ -109,7 +114,8 @@ function clearDistanceImmediate() {
 
 function updateHUD() {
   const name = (currentHole && currentHole.name) ? ` · ${currentHole.name.toUpperCase()}` : '';
-  const bossTag = isBossHole(run.holeNumber) ? ' · ⚑ BOSS' : '';
+  const handicap = run.holeMeta.bossHandicap;
+  const bossTag = handicap ? ` · ⚑ ${handicap.toUpperCase().replace('-', ' ')}` : '';
   holeEl.textContent = `HOLE ${run.holeNumber}/${RUN_LENGTH}${name} · PAR ${run.holeMeta.par}${bossTag}`;
   holeEl.classList.toggle('boss', isBossHole(run.holeNumber));
   strokesEl.textContent = `STROKE ${run.strokes}/${run.holeMeta.strokeLimit}`;
@@ -157,14 +163,19 @@ function renderRunOver({ completed }) {
 }
 
 function showRunOver() {
+  RunSave.clear();
+  canResume = false;
   runOverEl.classList.remove('victory');
   runOverEl.querySelector('h1').textContent = 'RUN OVER';
   runOverHolesEl.textContent = `Holes played: ${run.holesPlayed} / ${RUN_LENGTH}`;
   runOverCashEl.textContent = `Total cash: $${run.cash}`;
   renderRunOver({ completed: false });
   runOverEl.classList.add('shown');
+  document.body.classList.add('run-over-active');
 }
 function showRunComplete() {
+  RunSave.clear();
+  canResume = false;
   swing.setEnabled(false);
   runOverEl.classList.add('victory');
   runOverEl.querySelector('h1').textContent = 'COURSE COMPLETE';
@@ -172,9 +183,11 @@ function showRunComplete() {
   runOverCashEl.textContent = `Final cash: $${run.cash}`;
   renderRunOver({ completed: true });
   runOverEl.classList.add('shown');
+  document.body.classList.add('run-over-active');
 }
 function hideRunOver() {
   runOverEl.classList.remove('shown', 'victory');
+  document.body.classList.remove('run-over-active');
 }
 
 // Apply item-driven world effects: ball color/glow, bounce multiplier on
@@ -182,15 +195,24 @@ function hideRunOver() {
 // (purchase, sale, hole start) so visuals stay in sync with the bag.
 function applyItemEffects() {
   // Bouncy Ball — orange ball + bouncier physics (predictor mirrors this value
-  // via getBounceMultiplier so the landing marker stays accurate).
+  // via getBounceMultiplier so the landing marker stays accurate). The trail
+  // takes the same tint so it reads as "this ball is special".
   if (run.hasItem('bouncy-ball')) {
     ballMesh.material.color.setHex(0xff7a2a);
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x331100);
     physics.bounceMultiplier = 1.65;
+    trail.setColor(0xff7a2a);
+  } else if (run.ball === 'golden-ball') {
+    // Golden Ball — bright yellow ball + matching trail (visual flair only).
+    ballMesh.material.color.setHex(0xffd86b);
+    if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x332200);
+    physics.bounceMultiplier = 1.0;
+    trail.setColor(0xffd86b);
   } else {
     ballMesh.material.color.setHex(0xffffff);
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x000000);
     physics.bounceMultiplier = 1.0;
+    trail.setColor(0xffffff);
   }
 
   // Range Finder — distance rings on the minimap
@@ -203,6 +225,20 @@ run.onChange(() => {
 });
 updateHUD();
 
+// Auto-save the current run to localStorage on every state change. Debounced
+// so animation-driven count-ups don't hammer storage. The save() function
+// itself only writes when status === 'playing', so cash-out / busted states
+// don't clobber the snapshot.
+let _saveTimer = null;
+function scheduleAutoSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    RunSave.save(run, bag);
+  }, 250);
+}
+run.onChange(scheduleAutoSave);
+
 // ----- cash-out screen (after each hole) -----
 const cashOut = new CashOut({
   onCashOut: () => {
@@ -210,7 +246,7 @@ const cashOut = new CashOut({
     // Open the Pro Shop. Continue button there will advance the hole.
     shop.show({ holeName: currentHole && currentHole.name });
     // Country Club Card discounts shop prices — pulse it as the shop opens.
-    if (run.hasItem('country-club-card')) itemBar.trigger('country-club-card');
+    if (run.hasItem('country-club-card')) itemBar.trigger('country-club-card', '20% off');
   },
 });
 
@@ -300,14 +336,18 @@ detailCloseBtn.addEventListener('click', exitHoleDetail);
 
 // ----- title screen + pause flow -----
 let inGame = false;       // false = title screen showing, true = playing
-let canResume = false;    // becomes true once a run is started; reset on Play Again
+// canResume mirrors whether there's a run we can pick up. Initialized from
+// the localStorage snapshot so a refreshed page still offers Resume.
+let canResume = RunSave.has();
 let savedYaw = 0;         // restore camera yaw on Resume
 const TITLE_ORBIT_RATE = 0.18; // rad/sec — gentle showcase orbit (was 0.45, felt dizzying)
 
 const titleScreen = new TitleScreen({
   onPlay: () => {
     sfx.uiClick();
-    // Start a fresh run, regardless of any in-progress state
+    // Starting a fresh run abandons whatever was saved. The new run will
+    // immediately rewrite the save via the auto-save listener.
+    RunSave.clear();
     clearDistanceImmediate();
     run.resetRun(holeMetaFromTemplate(templateForHole(1), 1));
     bag.resetForNewRun();
@@ -319,6 +359,8 @@ const titleScreen = new TitleScreen({
   onResume: () => {
     if (!canResume) return;
     sfx.uiClick();
+    // The hydrate-on-boot step (below) already aligned in-memory state
+    // with the saved snapshot, so Resume is just "hide title, go play".
     leaveTitleScreen();
   },
   onCollection: () => {
@@ -341,8 +383,9 @@ const pauseMenu = new PauseMenu({
     document.body.classList.remove('preview-active');
     hideRunOver();
     cashOut.hide();
-    canResume = false;          // run is abandoned
-    enterTitleScreen();         // back to the home view
+    RunSave.clear();            // explicit abandon — save is gone too
+    canResume = false;
+    enterTitleScreen();
   },
 });
 
@@ -358,17 +401,17 @@ function openPauseMenu() {
   pauseMenu.show();
 }
 
-const pauseBtn = document.getElementById('pause-btn');
-pauseBtn.addEventListener('click', openPauseMenu);
-
-// Same menu trigger from inside the shop and preview screens.
-document.querySelector('.shop-menu').addEventListener('click', openPauseMenu);
-document.querySelector('.preview-menu').addEventListener('click', openPauseMenu);
+// Single global menu button (top-left of viewport, above every modal) —
+// works during gameplay AND on shop / preview / cash-out.
+document.getElementById('global-menu-btn').addEventListener('click', openPauseMenu);
 
 function enterTitleScreen() {
   inGame = false;
   swing.setEnabled(false);
   savedYaw = followCamera.targetYaw; // restore on Resume
+  // Recompute resume-availability from disk on every title visit, so a
+  // crashed run from a previous session shows up correctly.
+  if (RunSave.has()) canResume = true;
   titleScreen.show({ canResume, holeName: currentHole.name });
 }
 
@@ -394,6 +437,8 @@ function leaveTitleScreen() {
 // Pro Shop's Clubs tab.
 const bag = new Bag();
 const clubSelector = new ClubSelector(bag);
+// Hook the auto-save into bag changes too (clubs bought/sold, uses consumed).
+bag.onChange(scheduleAutoSave);
 
 // ----- pro shop (needs `bag`, so constructed here, not above with cashOut) -----
 const shop = new Shop({
@@ -502,13 +547,16 @@ const swing = new SwingController({
     // strokes === 0, and Heavy Driver/Driver Specialist/Lead Wedge fire
     // whenever the shot uses them.
     const club = bag.active;
-    if (club.id === 'driver' && run.hasItem('heavy-driver')) itemBar.trigger('heavy-driver');
-    if (run.strokes === 0 && run.hasItem('lucky-tee')) itemBar.trigger('lucky-tee');
-    if (club.id === 'driver' && run.hasItem('driver-specialist')) itemBar.trigger('driver-specialist');
-    if (club.id === 'wedge' && run.hasItem('lead-wedge')) itemBar.trigger('lead-wedge');
-    // Boss handicap: ONE CLUB ONLY. The first swing of a boss hole locks the
-    // player into whichever club they used; the rest of the hole must use it.
-    if (run.holeMeta.isBoss && !bag.lockedClubId) {
+    if (club.id === 'driver' && run.hasItem('heavy-driver')) {
+      const stacks = run.itemCount('heavy-driver');
+      itemBar.trigger('heavy-driver', `+${10 * stacks}% Power`);
+    }
+    if (run.strokes === 0 && run.hasItem('lucky-tee')) itemBar.trigger('lucky-tee', '+20% Power');
+    if (club.id === 'driver' && run.hasItem('driver-specialist')) itemBar.trigger('driver-specialist', '+25% Power');
+    if (club.id === 'wedge' && run.hasItem('lead-wedge')) itemBar.trigger('lead-wedge', '+25% Power');
+    // Boss handicap: ONE CLUB ONLY. The first swing of a one-club boss
+    // locks the player into whichever club they used.
+    if (run.holeMeta.bossHandicap === 'one-club' && !bag.lockedClubId) {
       bag.lockToActive();
     }
     // Special clubs decrement their use counters on every fire. If the active
@@ -539,6 +587,8 @@ const swing = new SwingController({
     }
     if (club && club.id === 'wedge' && run.hasItem('lead-wedge')) mult *= 1.25;
     if (run.strokes === 0 && run.hasItem('lucky-tee')) mult *= 1.20;
+    // Boss handicap: STORMY drains 30% off every shot.
+    if (run.holeMeta.bossHandicap === 'stormy') mult *= 0.70;
     return mult;
   },
   // Eagle Eye reveals the full bounce + roll path on the minimap.
@@ -550,13 +600,17 @@ const swing = new SwingController({
 swing.setSurfaces(currentHole.surfaces);
 
 // ----- hole loading -----
-function loadCurrentHole() {
+function loadCurrentHole({ restoring = false } = {}) {
   const template = templateForHole(run.holeNumber);
   const meta = holeMetaFromTemplate(template, run.holeNumber);
 
+  // Boss-handicap: TINY CUP shrinks the cup both visually and in physics.
+  const cupRadius = meta.bossHandicap === 'tiny-cup' ? 0.30 : 0.55;
+
   // tear down old geometry, build new
   disposeHole(scene, currentHole);
-  currentHole = buildHole(scene, template);
+  currentHole = buildHole(scene, template, { cupRadius });
+  physics.cupRadius = cupRadius;
 
   // push to physics + predictor
   physics.setHole(currentHole.teePosition, currentHole.cupPosition, currentHole.surfaces);
@@ -579,15 +633,19 @@ function loadCurrentHole() {
   followCamera.targetYaw = 0;
   followCamera.snap(physics.position);
 
-  // tell Run the par/limit for this hole (boss-aware leeway)
-  run.startHole(meta);
+  // tell Run the par/limit for this hole (boss-aware leeway). On restore we
+  // skip hole-start payouts since they already happened in the saved state.
+  run.startHole(meta, { applyPayouts: !restoring });
   // refresh per-hole use counters on special clubs
   bag.resetHoleUses();
   swing.setEnabled(true);
 
   // Trust Fund pays out at hole start — flash the pill so the player
-  // sees the connection between the +$ and the item.
-  if (run.hasItem('trust-fund')) itemBar.trigger('trust-fund');
+  // sees the connection between the +$ and the item. Skipped on restore.
+  if (!restoring && run.hasItem('trust-fund')) {
+    const stacks = run.itemCount('trust-fund');
+    itemBar.trigger('trust-fund', `+$${2 * stacks}`);
+  }
 
   // unlock this hole in the collection
   collection.discoverHole(currentHole.id);
@@ -606,10 +664,11 @@ function advanceToNextHole() {
   showPreviewFor(next);
 }
 
-// Audio: ball bounces — different sound on sand vs grass.
+// Audio: ball bounces — surface-aware so fairway, green, rough, and sand
+// each sound different.
 physics.onBounce = (intensity, surface) => {
   if (surface === 'sand') sfx.bunker();
-  else sfx.bounce(intensity);
+  else sfx.bounce(intensity, surface);
 };
 
 physics.onHoled = () => {
@@ -621,11 +680,16 @@ physics.onHoled = () => {
 
   // Compound Interest doubles the interest cap — pulse it when interest pays.
   if (run.hasItem('compound-interest') && result.breakdown.interest > 0) {
-    itemBar.trigger('compound-interest');
+    itemBar.trigger('compound-interest', `+$${result.breakdown.interest}`);
   }
   // Hole Hustler pulses at hole-out when it actually paid out.
   if (run.hasItem('hole-hustler') && result.breakdown.hustler > 0) {
-    itemBar.trigger('hole-hustler');
+    itemBar.trigger('hole-hustler', `+$${result.breakdown.hustler}`);
+  }
+  // Golden Ball — equipment bonus already added to cash inside run.onHoled,
+  // here we just flash the pill so the player sees the connection.
+  if (run.ball === 'golden-ball' && result.breakdown.golden > 0) {
+    itemBar.trigger('golden-ball', `+$${result.breakdown.golden}`);
   }
   // Brief delay so the player gets the satisfaction of seeing the ball
   // drop into the cup before the cash-out overlay appears.
@@ -658,14 +722,14 @@ physics.onCameToRest = () => {
       const bonus = 3 * run.itemCount('sandbagger');
       run.cash += bonus;
       showScoreBanner('SANDBAGGER!', bonus);
-      itemBar.trigger('sandbagger');
+      itemBar.trigger('sandbagger', `+$${bonus}`);
       sfx.cashGain();
       run._emit();
     } else if (surf === 'fairway' && run.hasItem('fairway-finder')) {
       const bonus = 1 * run.itemCount('fairway-finder');
       run.cash += bonus;
       // No banner — this is a quiet, frequent payout. Pulse the pill instead.
-      itemBar.trigger('fairway-finder');
+      itemBar.trigger('fairway-finder', `+$${bonus}`);
       sfx.cashGain();
       run._emit();
     }
@@ -702,6 +766,7 @@ function handleWaterPenalty() {
 
 playAgainBtn.addEventListener('click', () => {
   sfx.uiClick();
+  RunSave.clear();   // ensure no stale save survives a Play Again
   clearDistanceImmediate();
   hideRunOver();
   run.resetRun(holeMetaFromTemplate(templateForHole(1), 1));
@@ -729,6 +794,10 @@ let lastT = performance.now();
 // Interpolated render position — keeps the ball/camera/minimap visually
 // smooth on devices that render at higher Hz than the physics step rate.
 const renderPos = new Vector3();
+
+// Tracks last frame's "ball is moving" state so we can detect transitions
+// and reset the trail at-rest → moving and moving → at-rest.
+let _ballWasMoving = false;
 
 function frame() {
   requestAnimationFrame(frame);
@@ -760,6 +829,17 @@ function frame() {
   ballShadow.scale.setScalar(shadowScale);
   ballShadow.material.opacity = 0.28 * shadowScale;
 
+  // Trail — only visible while the ball is in motion. Fresh tail on every
+  // launch, cleared on every rest, so previous-shot ghosts never linger.
+  const ballMoving = !physics.isAtRest && !physics.isHoled;
+  if (ballMoving !== _ballWasMoving) {
+    trail.reset();
+    _ballWasMoving = ballMoving;
+  }
+  if (ballMoving) {
+    trail.push(renderPos.x, renderPos.y, renderPos.z);
+  }
+
   // smooth the visible landing marker each frame
   swing.tick();
 
@@ -786,6 +866,24 @@ function frame() {
 
   renderer.render(scene, camera);
 }
+
+// Boot: if there's a saved run on disk, hydrate the in-memory state so the
+// title screen's showcase shows the saved hole AND clicking Resume picks
+// up exactly where the player left off (no Trust Fund double-payout, no
+// per-hole counter loss for special clubs they hadn't yet refreshed).
+function bootHydrateIfNeeded() {
+  const snapshot = RunSave.load();
+  if (!snapshot) return;
+  try {
+    RunSave.applyTo(run, bag, snapshot);
+    loadCurrentHole({ restoring: true });
+  } catch (e) {
+    console.warn('[wackygolf] save restore failed, clearing snapshot:', e);
+    RunSave.clear();
+    canResume = false;
+  }
+}
+bootHydrateIfNeeded();
 
 // Show the title screen on boot — must run AFTER `swing` is constructed
 // because enterTitleScreen() touches swing.setEnabled.

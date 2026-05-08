@@ -18,9 +18,11 @@ const TREELINE_COUNT = 60;     // perimeter trees per hole
 const TREELINE_RING_SCALE = 1.25;
 const TREELINE_SPREAD = 0.5;   // 0..1, how much trees scatter outward from the ring
 
-/** Build a hole's geometry from a template. */
-export function buildHole(scene, template) {
+/** Build a hole's geometry from a template. options.cupRadius scales the
+ *  visible cup hole — used by the Tiny Cup boss handicap. */
+export function buildHole(scene, template, options = {}) {
   const root = new Group();
+  const cupRadius = options.cupRadius || 0.55;
 
   // fairway segments
   for (const r of template.fairway) {
@@ -53,7 +55,7 @@ export function buildHole(scene, template) {
 
   // cup
   const cup = new Mesh(
-    new CircleGeometry(0.55, 16),
+    new CircleGeometry(cupRadius, 16),
     new MeshBasicMaterial({ color: 0x111111 })
   );
   cup.rotation.x = -Math.PI / 2;

@@ -7,7 +7,7 @@
 //
 // Mobile-first: cards stack vertically, modal scrolls if content overflows.
 
-import { holeFeatures, isBossHole } from '../content/holes.js';
+import { holeFeatures, isBossHole, bossHandicapText } from '../content/holes.js';
 
 export class HolePreview {
   constructor() {
@@ -119,7 +119,7 @@ export class HolePreview {
     }
 
     const handicapHtml = isBoss
-      ? `<div class="phc-handicap">⚠ ONE CLUB ONLY — first swing locks your club</div>`
+      ? `<div class="phc-handicap">⚠ ${bossHandicapText(meta.bossHandicap)}</div>`
       : '';
 
     card.innerHTML = `

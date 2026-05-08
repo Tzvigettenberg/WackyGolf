@@ -45,6 +45,8 @@ export class CashOut {
     this.hustlerLine = this.modal.querySelector('.line-hustler');
     this.hustlerValEl = this.modal.querySelector('.line-hustler .cash');
     this.hustlerCountEl = this.modal.querySelector('.line-hustler .count');
+    this.goldenLine = this.modal.querySelector('.line-golden');
+    this.goldenValEl = this.modal.querySelector('.line-golden .cash');
     this.interestLine = this.modal.querySelector('.line-interest');
     this.interestValEl = this.modal.querySelector('.line-interest .cash');
 
@@ -75,6 +77,7 @@ export class CashOut {
     this.leewayValEl.textContent = '+$0';
     this.streakValEl.textContent = '+$0';
     this.hustlerValEl.textContent = '+$0';
+    this.goldenValEl.textContent = '+$0';
     this.interestValEl.textContent = '+$0';
     this.totalEl.textContent     = '+$0';
     this.cashFromEl.textContent  = `$${cashBefore}`;
@@ -86,12 +89,14 @@ export class CashOut {
     const showLeeway  = breakdown.leeway > 0;
     const showStreak  = breakdown.streak > 0;
     const showHustler = (breakdown.hustler || 0) > 0;
+    const showGolden  = (breakdown.golden || 0) > 0;
     const showInterest = breakdown.interest > 0;
     this.parLine.style.display    = showPar ? '' : 'none';
     this.underLine.style.display  = showUnder ? '' : 'none';
     this.leewayLine.style.display = showLeeway ? '' : 'none';
     this.streakLine.style.display = showStreak ? '' : 'none';
     this.hustlerLine.style.display = showHustler ? '' : 'none';
+    this.goldenLine.style.display = showGolden ? '' : 'none';
     this.interestLine.style.display = showInterest ? '' : 'none';
     if (showUnder)  this.underCountEl.textContent  = `(×${score.underParCircles})`;
     if (showLeeway) this.leewayCountEl.textContent = `(×${score.leewaySaved})`;
@@ -135,6 +140,11 @@ export class CashOut {
     // hole hustler
     if (showHustler) {
       this._countUp(this.hustlerValEl, 0, breakdown.hustler, delay);
+      delay += STAGGER_MS;
+    }
+    // golden ball (equipment bonus)
+    if (showGolden) {
+      this._countUp(this.goldenValEl, 0, breakdown.golden, delay);
       delay += STAGGER_MS;
     }
     // interest
@@ -186,13 +196,18 @@ export class CashOut {
     const balls = Array.from(this.strokeBallsEl.querySelectorAll('.ball'));
     const { strokes, par, strokeLimit } = score;
 
-    // Phase 1: fill in strokes one by one (green, or red if past par)
+    // Phase 1: fill in strokes one by one (green, or red if past par).
+    // A short surface-themed tick per ball gives each stroke a beat.
     let count = 0;
     for (let i = 0; i < Math.min(strokes, balls.length); i++) {
+      const isOver = i >= par;
       this._timers.push(setTimeout(() => {
-        balls[i].classList.add(i >= par ? 'over' : 'used');
+        balls[i].classList.add(isOver ? 'over' : 'used');
         count += 1;
         this.strokesCountEl.textContent = `${count}/${strokeLimit}`;
+        // Tick rises in pitch with each successive stroke for a satisfying ladder.
+        const pitch = Math.min(1, 0.3 + i * 0.08);
+        sfx.bounce(pitch, isOver ? 'rough' : 'fairway');
       }, delay));
       delay += STROKE_GAP;
     }
@@ -200,17 +215,23 @@ export class CashOut {
     // Pause, then start awarding savings
     delay += 220;
 
-    // Phase 2: glow saved-under-par circles (positions strokes..par-1)
-    // — each gold ball is a "saved" stroke under par. Slightly slower so
-    // each one feels like an event.
+    // Phase 2: glow saved-under-par circles (positions strokes..par-1).
+    // Each gold ball is a "saved stroke" — celebrate with a coin chime.
     for (let i = strokes; i < par; i++) {
-      this._timers.push(setTimeout(() => balls[i].classList.add('saved-par'), delay));
+      this._timers.push(setTimeout(() => {
+        balls[i].classList.add('saved-par');
+        sfx.cashGain();
+      }, delay));
       delay += SAVED_GAP + 30;
     }
 
-    // Phase 3: glow saved-leeway circles (positions max(strokes,par)..limit-1)
+    // Phase 3: glow saved-leeway circles (positions max(strokes,par)..limit-1).
+    // Subtle ticks — these don't pay (in v1 economy) but still mark "cushion".
     for (let i = Math.max(strokes, par); i < strokeLimit; i++) {
-      this._timers.push(setTimeout(() => balls[i].classList.add('saved-leeway'), delay));
+      this._timers.push(setTimeout(() => {
+        balls[i].classList.add('saved-leeway');
+        sfx.uiClick();
+      }, delay));
       delay += SAVED_GAP - 20;
     }
 
@@ -219,11 +240,15 @@ export class CashOut {
 
   _countUp(el, from, to, delayMs) {
     this._timers.push(setTimeout(() => {
+      // Each line gets one coin chime as its number starts ticking up.
+      if (to > 0) sfx.cashGain();
       this._animate(el, from, to, COUNT_MS, (v) => `+$${v}`);
     }, delayMs));
   }
 
   _countCash(el, from, to, durationMs) {
+    // The big "you went from X to Y" cash counter — celebrate.
+    if (to > from) sfx.cashGain();
     this._animate(el, from, to, durationMs, (v) => `$${v}`);
   }
 

@@ -88,6 +88,8 @@ export class Run {
     // sold back from the shop independently.
     this.items = [];
     this.bagSlots = STARTING_BAG_SLOTS;
+    // Equipment slot — currently just one: the ball. Stores an item id or null.
+    this.ball = null;
     // Golf score: sum of (strokes - par) over holes that actually contributed
     // — i.e., were holed-out or busted. Skipped holes don't count. Lower = better.
     this.totalScore = 0;
@@ -98,8 +100,28 @@ export class Run {
 
   // ---- items ----
 
-  hasItem(id)    { return this.items.includes(id); }
-  itemCount(id)  { return this.items.filter((x) => x === id).length; }
+  /** True if owned anywhere — bag slot OR equipment (currently just ball). */
+  hasItem(id)    { return this.items.includes(id) || this.ball === id; }
+  /** Total copies owned across bag + equipment. Equipment slots are 0 or 1. */
+  itemCount(id)  {
+    return this.items.filter((x) => x === id).length + (this.ball === id ? 1 : 0);
+  }
+
+  // ---- equipment: ball slot ----
+
+  /** Equip a ball; returns the previous ball id (so caller can refund). */
+  equipBall(id) {
+    const prev = this.ball;
+    this.ball = id;
+    this._emit();
+    return prev;
+  }
+  unequipBall() {
+    const prev = this.ball;
+    this.ball = null;
+    this._emit();
+    return prev;
+  }
 
   /** True if at least one slot is free for a new purchase. */
   get hasFreeSlot() { return this.items.length < this.bagSlots; }
@@ -177,13 +199,16 @@ export class Run {
     // synergy with under-par builds.
     const hustlerCash = result.underParCircles * this.itemCount('hole-hustler');
 
+    // Golden Ball (equipment) — flat bonus on every sink.
+    const goldenCash = this.ball === 'golden-ball' ? 3 : 0;
+
     // interest: $1 per $5 on the post-payout balance, capped at $2
     // (or $4 with the Compound Interest item)
     const interestCap = this.hasItem('compound-interest') ? 4 : 2;
-    const provisional = this.cash + result.cash + streakCash + hustlerCash;
+    const provisional = this.cash + result.cash + streakCash + hustlerCash + goldenCash;
     const interestCash = Math.min(interestCap, Math.floor(provisional / 5));
 
-    const total = result.cash + streakCash + interestCash + hustlerCash;
+    const total = result.cash + streakCash + interestCash + hustlerCash + goldenCash;
     const cashBefore = this.cash;
     this.cash += total;
 
@@ -199,6 +224,7 @@ export class Run {
         leeway: result.leewayCash,
         streak: streakCash,
         hustler: hustlerCash,
+        golden: goldenCash,
         interest: interestCash,
         total,
       },
@@ -225,14 +251,20 @@ export class Run {
     return false;
   }
 
-  /** Begin the current hole with given meta — resets strokes, status, last result. */
-  startHole(meta) {
+  /**
+   * Begin the current hole with given meta. Resets strokes/status/lastResult
+   * and applies hole-start payouts (Trust Fund). Pass `applyPayouts: false`
+   * when restoring from a save — the Trust Fund cash already lives in the
+   * snapshot, so re-paying would double-dip.
+   */
+  startHole(meta, { applyPayouts = true } = {}) {
     this.holeMeta = meta || this.holeMeta;
     this.strokes = 0;
     this.status = 'playing';
     this.lastResult = null;
-    // Trust Fund pays out at the start of every hole — $2 per copy.
-    if (this.hasItem('trust-fund')) this.cash += 2 * this.itemCount('trust-fund');
+    if (applyPayouts && this.hasItem('trust-fund')) {
+      this.cash += 2 * this.itemCount('trust-fund');
+    }
     this._emit();
   }
 
@@ -259,6 +291,7 @@ export class Run {
     this.birdieStreak = 0;
     this.items = [];
     this.bagSlots = STARTING_BAG_SLOTS;
+    this.ball = null;
     this.totalScore = 0;
     this.holesPlayed = 0;
     this.startHole(meta);

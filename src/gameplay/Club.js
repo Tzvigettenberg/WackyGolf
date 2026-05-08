@@ -24,7 +24,7 @@ export const CLUBS = [
     launchAngle: deg(14),   // raised from 11° for a real arc, less rolling
     cost: 7,
     desc: 'Long. Tee-shot specialist.',
-    icon: 'fa-solid fa-rocket',
+    icon: 'icon-club',
   },
   {
     id: 'iron',
@@ -36,7 +36,7 @@ export const CLUBS = [
     starter: true,          // free at run start
     cost: 0,
     desc: 'All-purpose mid-iron. The starter club.',
-    icon: 'fa-solid fa-arrow-trend-up',
+    icon: 'icon-club',
   },
   {
     id: 'wedge',
@@ -47,7 +47,7 @@ export const CLUBS = [
     launchAngle: deg(52),   // high lob — short, stops fast
     cost: 7,
     desc: 'High lob. Short and stops fast on the green.',
-    icon: 'fa-solid fa-mountain',
+    icon: 'icon-club',
   },
   {
     id: 'putter',
@@ -58,7 +58,7 @@ export const CLUBS = [
     launchAngle: deg(0),    // rolls flat
     cost: 5,
     desc: 'Low rolling stroke. Use on the green.',
-    icon: 'fa-solid fa-arrow-right-long',
+    icon: 'icon-club',
   },
 
   // ---- special clubs ----
@@ -73,7 +73,7 @@ export const CLUBS = [
     usesPerHole: 1,
     desc: 'Massive range. 1 use per hole.',
     special: true,
-    icon: 'fa-solid fa-bomb',
+    icon: 'icon-club',
   },
   {
     id: 'phoenix-iron',
@@ -86,7 +86,7 @@ export const CLUBS = [
     usesTotal: 5,           // breaks after 5 total uses across the run
     desc: 'Powerful 5-iron. Breaks after 5 swings.',
     special: true,
-    icon: 'fa-solid fa-fire',
+    icon: 'icon-club',
   },
 ];
 

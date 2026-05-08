@@ -24,8 +24,54 @@
       overscroll-behavior: none;
     }
     canvas { display: block; touch-action: none; }
+
+    /* Custom SVG icons rendered as CSS masks. Each renders at 1em in the
+       parent's currentColor — drop-in compatible with Font Awesome <i> tags.
+       SVG files live in public/icons/ and are served at the build's base URL. */
+    .icon-club {
+      display: inline-block;
+      width: 1em; height: 1em;
+      background-color: currentColor;
+      -webkit-mask-image: url('./icons/golf-club.svg');
+              mask-image: url('./icons/golf-club.svg');
+      -webkit-mask-size: contain;       mask-size: contain;
+      -webkit-mask-repeat: no-repeat;   mask-repeat: no-repeat;
+      -webkit-mask-position: center;    mask-position: center;
+      vertical-align: middle;
+    }
+
+    /* Global menu button — pinned top-left, ABOVE every modal so the
+       player can always quit/mute/pause regardless of what's on screen.
+       Hidden only on the title screen (which has its own buttons) and on
+       the run-over / victory screen. */
+    #global-menu-btn {
+      position: fixed;
+      top: env(safe-area-inset-top, 12px);
+      left: 12px;
+      width: 38px; height: 38px;
+      padding: 0;
+      background: rgba(0, 0, 0, 0.55);
+      color: white;
+      border: 1.5px solid rgba(255, 255, 255, 0.35);
+      border-radius: 9px;
+      font-size: 16px; font-weight: 800;
+      line-height: 1;
+      cursor: pointer;
+      font-family: inherit;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+      z-index: 95;
+      transition: transform 0.08s ease, background 0.15s ease;
+    }
+    #global-menu-btn:hover  { background: rgba(0, 0, 0, 0.72); }
+    #global-menu-btn:active { transform: scale(0.94); }
+    body.title-active    #global-menu-btn,
+    body.run-over-active #global-menu-btn { display: none; }
+
     #hud-top {
-      position: fixed; top: env(safe-area-inset-top, 12px); left: 14px;
+      position: fixed;
+      /* Sits below the global menu button so they never overlap */
+      top: calc(env(safe-area-inset-top, 12px) + 50px);
+      left: 14px;
       pointer-events: none;
       color: white;
       text-shadow: 0 2px 6px rgba(0,0,0,0.4);
@@ -63,6 +109,7 @@
     body.title-active #power-meter,
     body.title-active #shot-distance,
     body.title-active #item-bar,
+    body.title-active #item-bar-popover,
     body.title-active .rotate-btn { display: none !important; }
 
     /* In-game item bar — small column on the right edge under the minimap.
@@ -73,10 +120,13 @@
       top: calc(env(safe-area-inset-top, 12px) + 156px);  /* under minimap */
       right: 12px;
       display: flex; flex-direction: column; gap: 6px;
-      pointer-events: none;
+      pointer-events: none;     /* default — pills opt back in below */
       z-index: 4;
     }
     #item-bar .item-pill {
+      pointer-events: auto;     /* tappable for explanation popover */
+      cursor: pointer;
+      position: relative;
       width: 38px; height: 38px;
       border-radius: 9px;
       background: rgba(0, 0, 0, 0.45);
@@ -87,6 +137,85 @@
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
       transition: background 0.18s ease, border-color 0.18s ease,
                   color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+    }
+    #item-bar .item-pill.equipment {
+      border-style: double;
+      border-width: 3px;
+    }
+    #item-bar .item-bar-sep {
+      width: 28px; height: 1px;
+      margin: 2px auto;
+      background: rgba(255, 255, 255, 0.25);
+      pointer-events: none;
+    }
+    #item-bar .item-pill .pill-float-text {
+      position: absolute;
+      right: 46px; top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+      padding: 2px 8px;
+      background: rgba(0, 0, 0, 0.7);
+      border: 1px solid var(--rarity-color, white);
+      border-radius: 999px;
+      color: #fff;
+      font-size: 11px; font-weight: 800; letter-spacing: 0.5px;
+      white-space: nowrap;
+      opacity: 0;
+    }
+    #item-bar .item-pill .pill-float-text.shown {
+      animation: pill-float 1.4s ease-out forwards;
+    }
+    @keyframes pill-float {
+      0%   { opacity: 0; transform: translate(0, -50%); }
+      15%  { opacity: 1; transform: translate(-4px, -50%); }
+      75%  { opacity: 1; transform: translate(-4px, calc(-50% - 8px)); }
+      100% { opacity: 0; transform: translate(-4px, calc(-50% - 16px)); }
+    }
+
+    /* Popover shown when a pill is tapped — explains the item. */
+    #item-bar-popover {
+      position: fixed;
+      display: none;
+      max-width: 240px;
+      background: rgba(20, 40, 30, 0.98);
+      border: 1.5px solid var(--rarity-color, white);
+      border-radius: 10px;
+      padding: 10px 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+      color: white;
+      font-family: inherit;
+      pointer-events: auto;
+      z-index: 95;
+    }
+    #item-bar-popover.shown { display: block; }
+    #item-bar-popover .ibp-head {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 6px;
+    }
+    #item-bar-popover .ibp-icon {
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1.5px solid var(--rarity-color, white);
+      color: var(--rarity-color, white);
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    #item-bar-popover .ibp-titles { min-width: 0; }
+    #item-bar-popover .ibp-rarity {
+      font-size: 9px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--rarity-color, white);
+      opacity: 0.85;
+    }
+    #item-bar-popover .ibp-name {
+      font-size: 14px; font-weight: 800;
+      color: white;
+    }
+    #item-bar-popover .ibp-desc {
+      font-size: 12px;
+      line-height: 1.35;
+      opacity: 0.9;
     }
     #item-bar .item-pill .pill-icon {
       font-size: 16px;
@@ -187,7 +316,12 @@
       max-width: none; max-height: none;
       background: transparent;
       border: none; border-radius: 0;
-      padding: env(safe-area-inset-top, 12px) 16px env(safe-area-inset-bottom, 12px) 16px;
+      /* Keep the Continue button visibly off the bottom edge — bigger of
+         the safe-area inset and a sensible default. */
+      padding-top: env(safe-area-inset-top, 12px);
+      padding-left: 16px;
+      padding-right: 16px;
+      padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
       box-shadow: none;
       display: flex; flex-direction: column; gap: 10px;
       overflow: hidden;
@@ -222,11 +356,12 @@
     }
     .modal-menu-btn:hover { background: rgba(255, 255, 255, 0.18); }
     .modal-menu-btn:active { transform: scale(0.95); }
-    /* Preview menu button sits in the top-left of the preview card */
+    /* Preview menu button sits in the top-left of the preview card,
+       in normal flow above the header so it doesn't overlap cash. */
     #hole-preview .preview-card { position: relative; }
     #hole-preview .preview-menu {
-      position: absolute;
-      top: 12px; left: 12px;
+      align-self: flex-start;
+      margin-bottom: -4px;
     }
     #shop .shop-title {
       margin: 0;
@@ -1231,6 +1366,7 @@
     body.preview-active #power-meter,
     body.preview-active #shot-distance,
     body.preview-active #item-bar,
+    body.preview-active #item-bar-popover,
     body.preview-active .rotate-btn { display: none !important; }
 
     /* Detail view — transparent overlay so the live 3D hole is visible behind it */
@@ -1557,13 +1693,13 @@
   </style>
 </head>
 <body>
+  <button id="global-menu-btn" type="button" aria-label="Menu">☰</button>
   <div id="hud-top">
     <div id="title">Wacky Golf</div>
     <div id="hud-stats">
       <div id="stat-hole">HOLE 1 · PAR 4</div>
       <div id="stat-strokes">STROKE 0/8</div>
       <div id="stat-cash">$8</div>
-      <button id="pause-btn" type="button" aria-label="Pause to title screen">☰</button>
     </div>
   </div>
   <div id="hud-bottom">Pick a club · drag back · release to swing · sink it</div>
@@ -1589,7 +1725,6 @@
   <div id="shop" role="dialog" aria-modal="true" aria-label="Pro Shop">
     <div class="shop-card">
       <header class="shop-header">
-        <button class="modal-menu-btn shop-menu" type="button" aria-label="Menu">☰</button>
         <h2 class="shop-title">Pro Shop</h2>
         <div class="shop-cash">$0</div>
       </header>
@@ -1637,6 +1772,10 @@
         </div>
         <div class="cashout-line line-hustler">
           <div class="label">Hole Hustler<span class="count"></span></div>
+          <div class="cash">+$0</div>
+        </div>
+        <div class="cashout-line line-golden">
+          <div class="label">Golden Ball</div>
           <div class="cash">+$0</div>
         </div>
         <div class="cashout-line line-interest">
@@ -1709,7 +1848,6 @@
 
   <div id="hole-preview" role="dialog" aria-modal="true" aria-label="Round preview">
     <div class="preview-card">
-      <button class="modal-menu-btn preview-menu" type="button" aria-label="Menu">☰</button>
       <div class="preview-header"></div>
       <div class="preview-cards"></div>
     </div>

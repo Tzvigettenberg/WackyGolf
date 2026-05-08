@@ -77,13 +77,54 @@ class Sfx {
     src.start(t);
   }
 
-  /** Ground contact — tick that varies with impact strength. */
-  bounce(intensity = 0.5) {
+  /**
+   * Ground contact — tick that varies with impact strength AND surface.
+   *   fairway — bright square click (default)
+   *   green   — soft, higher-pitched sine "tip"
+   *   rough   — low-passed noise thud
+   *   (sand handled separately by bunker())
+   */
+  bounce(intensity = 0.5, surface = 'fairway') {
     if (!this._ready()) return;
     const t = this.ctx.currentTime;
+
+    if (surface === 'green') {
+      // Putting-green tip — softer, higher
+      const dur = 0.06;
+      const f = 760 + intensity * 180;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.55, t + dur);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(Math.min(0.13, 0.04 + intensity * 0.10), t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + dur + 0.02);
+      return;
+    }
+
+    if (surface === 'rough') {
+      // Rough grass = muffled lowpass-noise thud
+      const dur = 0.09;
+      const noise = this._noiseBuffer(dur);
+      const src = this.ctx.createBufferSource();
+      src.buffer = noise;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 380;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(Math.min(0.20, 0.06 + intensity * 0.14), t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      src.connect(filter).connect(g).connect(this.master);
+      src.start(t);
+      return;
+    }
+
+    // Fairway (default) — bright square click
     const dur = 0.05;
     const f = 480 + intensity * 220;
-
     const osc = this.ctx.createOscillator();
     osc.type = 'square';
     osc.frequency.setValueAtTime(f, t);

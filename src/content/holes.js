@@ -203,6 +203,32 @@ export function holeFeatures(template) {
 }
 
 /**
+ * Each boss hole has a distinct handicap so they don't all feel like
+ * "tighter strokes". Indexed by which boss it is (1st, 2nd, or 3rd).
+ *   one-club  — first swing locks your club for the rest of the hole
+ *   tiny-cup  — cup radius shrinks dramatically, putts must be precise
+ *   stormy    — every shot loses 30% power, ranges feel cramped
+ */
+const BOSS_HANDICAPS = ['one-club', 'tiny-cup', 'stormy'];
+
+export function bossHandicapFor(holeNumber) {
+  if (!isBossHole(holeNumber)) return null;
+  // hole 3 → idx 0, hole 6 → idx 1, hole 9 → idx 2
+  const idx = Math.floor((holeNumber - 1) / 3);
+  return BOSS_HANDICAPS[idx % BOSS_HANDICAPS.length];
+}
+
+/** Human-readable description for the preview screen. */
+export function bossHandicapText(handicap) {
+  switch (handicap) {
+    case 'one-club': return 'ONE CLUB ONLY — first swing locks your club';
+    case 'tiny-cup': return 'TINY CUP — cup is half-size';
+    case 'stormy':   return 'STORMY — every shot loses 30% power';
+    default:         return '';
+  }
+}
+
+/**
  * Stroke limit for a hole. Boss holes get par+2 (tight); normal holes get
  * par+4. Hole-number-aware so the host can pass it in directly.
  */
@@ -212,6 +238,7 @@ export function holeMetaFromTemplate(template, holeNumber = 1) {
     par: template.par,
     strokeLimit: template.par + leeway,
     isBoss: isBossHole(holeNumber),
+    bossHandicap: bossHandicapFor(holeNumber),
     holeNumber,
   };
 }

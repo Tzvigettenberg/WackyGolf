@@ -7,7 +7,7 @@
 // club popping up feels like a real "ooh!" moment rather than a separate
 // always-present catalog.
 
-import { ITEMS, itemById } from '../content/items.js';
+import { ITEMS, itemById, isEquipment } from '../content/items.js';
 import { clubSellValue } from '../gameplay/Club.js';
 import { REROLL_COST } from '../core/Run.js';
 import { sfx } from '../audio/Sfx.js';
@@ -103,6 +103,13 @@ export class Shop {
       </div>
       <div class="items-section">
         <div class="items-section-title">
+          <span>Ball</span>
+          <span class="equip-status"></span>
+        </div>
+        <div class="equipped-ball"></div>
+      </div>
+      <div class="items-section">
+        <div class="items-section-title">
           <span>Clubs</span>
           <span class="clubs-count"></span>
         </div>
@@ -183,11 +190,18 @@ export class Shop {
   // ----- buy / sell -----
 
   _tryBuyItem(id) {
+    const item = itemById(id);
+    if (!item) return;
+
+    // Equipment items (currently just balls) route to a slot instead of the bag.
+    if (isEquipment(item)) {
+      this._tryBuyEquipment(id, item);
+      return;
+    }
+
     const key = `item:${id}`;
     if (this.purchasedThisVisit.has(key)) return;
     if (!this.run.hasFreeSlot) return;
-    const item = itemById(id);
-    if (!item) return;
     const cost = this.run.effectiveCost(item.cost);
     if (this.run.cash < cost) return;
 
@@ -198,6 +212,25 @@ export class Shop {
       this.run.cash += cost;
       return;
     }
+    sfx.uiBuy();
+    this._punchCard(`.item-card[data-item-id="${id}"]`);
+    this._refresh();
+  }
+
+  /** Buy an equipment item (e.g. a ball). Auto-refunds whatever was equipped. */
+  _tryBuyEquipment(id, item) {
+    if (item.slot !== 'ball') return; // future: hat/shirt/etc
+    if (this.run.ball === id) return;  // already equipped, no-op
+    const cost = this.run.effectiveCost(item.cost);
+    if (this.run.cash < cost) return;
+
+    // Auto-refund the previously equipped ball at half cost.
+    if (this.run.ball) {
+      const prev = itemById(this.run.ball);
+      if (prev) this.run.cash += this.run.sellValue(prev.cost);
+    }
+    this.run.cash -= cost;
+    this.run.equipBall(id);
     sfx.uiBuy();
     this._punchCard(`.item-card[data-item-id="${id}"]`);
     this._refresh();
@@ -255,6 +288,18 @@ export class Shop {
     this._refresh();
   }
 
+  _trySellBall() {
+    const id = this.run.ball;
+    if (!id) return;
+    const item = itemById(id);
+    if (!item) return;
+    this.run.unequipBall();
+    this.run.cash += this.run.sellValue(item.cost);
+    sfx.uiSell();
+    this.run._emit();
+    this._refresh();
+  }
+
   _tryReroll() {
     if (this.run.cash < REROLL_COST) return;
     this.run.cash -= REROLL_COST;
@@ -275,8 +320,42 @@ export class Shop {
   _refresh() {
     this.cashEl.textContent = `$${this.run.cash}`;
     this._refreshBag();
+    this._refreshBall();
     this._refreshClubs();
     this._refreshOffers();
+  }
+
+  _refreshBall() {
+    const list = this.bodyEl.querySelector('.equipped-ball');
+    const status = this.bodyEl.querySelector('.equip-status');
+    if (!list) return;
+    list.innerHTML = '';
+    const id = this.run.ball;
+    if (!id) {
+      if (status) status.textContent = 'empty';
+      const empty = document.createElement('div');
+      empty.className = 'held-empty';
+      empty.textContent = 'No ball equipped — find one in the shop!';
+      list.appendChild(empty);
+      return;
+    }
+    const item = itemById(id);
+    if (!item) return;
+    if (status) status.textContent = 'equipped';
+    const sellValue = this.run.sellValue(item.cost);
+    const pill = document.createElement('div');
+    pill.className = 'club-pill';
+    pill.style.setProperty('--club-color', RARITY_COLORS[item.rarity] || '#fff');
+    pill.innerHTML = `
+      <i class="club-pill-icon ${item.icon || 'fa-solid fa-circle'}"></i>
+      <span class="club-pill-name">${item.name}</span>
+      <button class="club-pill-sell" type="button">Sell $${sellValue}</button>
+    `;
+    pill.querySelector('.club-pill-sell').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._trySellBall();
+    });
+    list.appendChild(pill);
   }
 
   _refreshBag() {
@@ -374,9 +453,18 @@ export class Shop {
         const item = itemById(id);
         if (!item) continue;
         cost = this.run.effectiveCost(item.cost);
-        key = `item:${id}`;
-        full = itemBagFull;
-        sold = this.purchasedThisVisit.has(key);
+        // Equipment items (e.g. ball) never block on "bag full" — they
+        // auto-replace whatever's in their slot. They DO show OWNED if
+        // they're already equipped.
+        if (isEquipment(item)) {
+          full = false;
+          sold = this.run.ball === id;
+          key = `equip:${id}`;
+        } else {
+          key = `item:${id}`;
+          full = itemBagFull;
+          sold = this.purchasedThisVisit.has(key);
+        }
       } else {
         const club = this.bag.shopClubs().find((c) => c.id === id);
         if (!club && !this.bag.isOwned(id)) continue;

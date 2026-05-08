@@ -1,10 +1,14 @@
-// Items pool — Phase 4b
+// Items pool — Phase 4g
 //
-// Persistent items the player can buy from the Pro Shop. Each instance takes
-// one bag slot; duplicates take separate slots and can be sold independently.
-// Effects are queried by id at the relevant point in gameplay (swing, hole
-// start, cash-out, etc.) — no per-item handler hooks, just `run.hasItem(id)`
-// or `run.itemCount(id)` lookups.
+// Persistent items the player can buy from the Pro Shop. Two flavors:
+//
+//   slot: 'trinket' (default) — go in the items bag, can stack across copies
+//   slot: 'ball'              — equipment: only one equipped at a time. Buying
+//                               a new one auto-refunds the previous ball at
+//                               half cost. The bag-slot system doesn't apply.
+//
+// Effects are queried at the relevant gameplay event via `run.hasItem(id)`
+// or `run.itemCount(id)` (which see *both* the bag and the equipped ball).
 
 export const ITEMS = [
   // ---- common: cheap, stack-friendly ----
@@ -14,7 +18,7 @@ export const ITEMS = [
     desc: 'Driver only: +10% Power. Stacks.',
     cost: 6,
     rarity: 'common',
-    icon: 'fa-solid fa-dumbbell',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'lucky-tee',
@@ -22,7 +26,7 @@ export const ITEMS = [
     desc: 'First shot of each hole: +20% Power.',
     cost: 5,
     rarity: 'common',
-    icon: 'fa-solid fa-clover',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'sandbagger',
@@ -30,7 +34,7 @@ export const ITEMS = [
     desc: '+$3 every time the ball lands in a bunker.',
     cost: 6,
     rarity: 'common',
-    icon: 'fa-solid fa-money-bill-wave',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'driver-specialist',
@@ -38,7 +42,7 @@ export const ITEMS = [
     desc: 'Driver only: +25% Power.',
     cost: 8,
     rarity: 'common',
-    icon: 'fa-solid fa-bullseye',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'lead-wedge',
@@ -46,7 +50,7 @@ export const ITEMS = [
     desc: 'Wedge only: +25% Power.',
     cost: 8,
     rarity: 'common',
-    icon: 'fa-solid fa-mountain-sun',
+    icon: 'fa-solid fa-gem',
   },
 
   // ---- uncommon: stronger / utility ----
@@ -56,7 +60,7 @@ export const ITEMS = [
     desc: '+$2 at the start of each hole.',
     cost: 10,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-piggy-bank',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'country-club-card',
@@ -64,7 +68,7 @@ export const ITEMS = [
     desc: 'All shop prices 20% off.',
     cost: 12,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-credit-card',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'compound-interest',
@@ -72,7 +76,7 @@ export const ITEMS = [
     desc: 'Interest cap doubled ($2 → $4).',
     cost: 13,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-chart-line',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'eagle-eye',
@@ -80,7 +84,7 @@ export const ITEMS = [
     desc: 'Minimap reveals the full bounce + roll path.',
     cost: 10,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-eye',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'range-finder',
@@ -88,7 +92,7 @@ export const ITEMS = [
     desc: 'Adds 50 / 100 / 150 yd rings to the minimap.',
     cost: 8,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-ruler',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'fairway-finder',
@@ -96,7 +100,7 @@ export const ITEMS = [
     desc: '+$1 every time the ball rests on the fairway.',
     cost: 9,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-crosshairs',
+    icon: 'fa-solid fa-gem',
   },
   {
     id: 'hole-hustler',
@@ -104,7 +108,7 @@ export const ITEMS = [
     desc: '+$1 per under-par stroke at hole-out.',
     cost: 10,
     rarity: 'uncommon',
-    icon: 'fa-solid fa-flag',
+    icon: 'fa-solid fa-gem',
   },
 
   // ---- rare: changes how the ball BEHAVES in the world ----
@@ -114,9 +118,25 @@ export const ITEMS = [
     desc: 'Your ball is BOUNCIER. Glows orange.',
     cost: 15,
     rarity: 'rare',
-    icon: 'fa-solid fa-basketball',
+    icon: 'fa-solid fa-circle',
+    slot: 'ball',
+  },
+  {
+    id: 'golden-ball',
+    name: 'Golden Ball',
+    desc: '+$3 every time you sink the ball.',
+    cost: 14,
+    rarity: 'rare',
+    icon: 'fa-solid fa-circle',
+    slot: 'ball',
   },
 ];
+
+/** True if this item is an equipment item (e.g. ball slot). Trinket items
+ *  default to falsy here. */
+export function isEquipment(item) {
+  return !!(item && item.slot && item.slot !== 'trinket');
+}
 
 export function itemById(id) {
   return ITEMS.find((it) => it.id === id) || null;

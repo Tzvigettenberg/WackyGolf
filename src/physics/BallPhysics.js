@@ -39,14 +39,24 @@ export const SURFACE_MODIFIERS = {
 };
 
 /**
- * Surface lookup. Priority order:
- *   sand → green → fairway → water → rough
- * (Sand near a green still counts as sand. An island green inside water
- * still counts as green. A fairway island inside water still counts as
- * fairway — used for bail-out landing zones in long water carries.)
+ * Surface lookup. Priority follows the visual stacking order — whichever
+ * surface is rendered ON TOP at this XZ point wins:
+ *   green → sand → fairway → water → rough
+ * (An island green inside water still counts as green. A fairway island
+ * inside water still counts as fairway — bail-out zones for long carries.)
+ *
+ * Note: green wins over sand. If a bunker visually sits *under* a green
+ * (i.e. the green covers it), the ball is "on the green" — sand doesn't
+ * leak through the visible surface.
  */
 export function getSurfaceAt(surfaces, x, z) {
   if (!surfaces) return 'fairway';
+
+  const g = surfaces.green;
+  if (g) {
+    const dx = x - g.cx, dz = z - g.cz;
+    if (dx * dx + dz * dz < g.radius * g.radius) return 'green';
+  }
 
   const bs = surfaces.bunkers;
   if (bs) {
@@ -55,12 +65,6 @@ export function getSurfaceAt(surfaces, x, z) {
       const dx = x - b.cx, dz = z - b.cz;
       if (dx * dx + dz * dz < b.radius * b.radius) return 'sand';
     }
-  }
-
-  const g = surfaces.green;
-  if (g) {
-    const dx = x - g.cx, dz = z - g.cz;
-    if (dx * dx + dz * dz < g.radius * g.radius) return 'green';
   }
 
   const fws = surfaces.fairwayRects;
@@ -108,6 +112,10 @@ export class BallPhysics {
 
     this.isAtRest = true;
     this.isHoled = false;
+
+    // Cup capture radius. Default = CUP_RADIUS; the host overrides this
+    // per-hole to support boss handicaps like Tiny Cup.
+    this.cupRadius = CUP_RADIUS;
 
     // Item hook — items can multiply the vertical bounce energy retained on
     // ground contact. 1.0 = default; Bouncy Ball pushes this up. Host should
@@ -227,7 +235,7 @@ export class BallPhysics {
     const distToCupXZ = Math.hypot(dx, dz);
     const speedNow = this.velocity.length();
     if (
-      distToCupXZ < CUP_RADIUS &&
+      distToCupXZ < this.cupRadius &&
       this.position.y < BALL_RADIUS * 1.5 &&
       speedNow < CUP_CAPTURE_SPEED
     ) {
