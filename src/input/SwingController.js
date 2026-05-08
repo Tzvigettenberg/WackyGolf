@@ -21,7 +21,7 @@ const MIN_DRAG_PX = 6;
 const UI_BLOCK_SELECTOR = '#club-selector, #minimap, #hud-top, button';
 
 export class SwingController {
-  constructor({ ball, scene, camera, canvas, bag, onShotFired, onAim, getPowerMultiplier }) {
+  constructor({ ball, scene, camera, canvas, bag, onShotFired, onAim, getPowerMultiplier, getShowFullTrajectory, getBounceMultiplier }) {
     this.ball = ball;
     this.scene = scene;
     this.camera = camera;
@@ -29,9 +29,16 @@ export class SwingController {
     this.bag = bag;
     this.onShotFired = onShotFired || (() => {});
     this.onAim = onAim || (() => {});
-    // Player-stat hook: club's effective max-speed is multiplied by this.
+    // Item hook: club's effective max-speed is multiplied by this. Receives the
+    // active club so item effects can be club-specific (e.g. Driver Specialist).
     // Defaults to 1 (no boost) if the host doesn't wire it up.
     this.getPowerMultiplier = getPowerMultiplier || (() => 1);
+    // Item hook: Eagle Eye reveals the full bounce + roll path on the minimap.
+    // Defaults to false → minimap only shows the airborne arc.
+    this.getShowFullTrajectory = getShowFullTrajectory || (() => false);
+    // Item hook: Bouncy Ball multiplies the bounce energy. Predictor must use
+    // the same value as live physics or the landing marker will lie.
+    this.getBounceMultiplier = getBounceMultiplier || (() => 1);
 
     // scratch vectors so we don't allocate per frame
     this._camFwd = new Vector3();
@@ -180,8 +187,9 @@ export class SwingController {
     if (dragLen < MIN_DRAG_PX) return null;
     const club = this.bag.active;
     const power = Math.min(dragLen / MAX_DRAG_PX, 1);
-    // player Power stat scales the club's effective max speed
-    const speed = power * club.maxSpeed * this.getPowerMultiplier();
+    // items can scale the club's effective max speed (Heavy Driver, Lucky Tee,
+    // Driver Specialist, etc.) — host computes from current run state.
+    const speed = power * club.maxSpeed * this.getPowerMultiplier(club);
 
     // camera-relative basis: ball fires in the camera's "forward" direction
     // when the player drags DOWN on screen, regardless of camera yaw.
@@ -217,23 +225,32 @@ export class SwingController {
       return;
     }
 
-    const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces);
+    const bounceMult = this.getBounceMultiplier();
+    const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
     // Use the FIRST ground-contact sample as the target — bounces and roll
     // aren't shown on the minimap so the player has to estimate them. Adds skill.
+    // (Eagle Eye flips this — minimap will show the full path AND the rest point.)
+    const eagleEye = this.getShowFullTrajectory();
     const firstLanding = traj.samples[traj.firstContactIdx] || traj.rest;
+    const target = eagleEye ? traj.rest : firstLanding;
 
-    this._predictedRest = firstLanding;
+    this._predictedRest = target;
     this.landingMarker.visible = true;
 
-    // Minimap gets the airborne-only arc + initial landing point.
+    // Minimap gets either the airborne arc only, or — with Eagle Eye —
+    // the full sampled path including bounces and roll.
+    const samples = eagleEye
+      ? traj.samples
+      : traj.samples.slice(0, traj.firstContactIdx + 1);
+
     this.onAim({
-      x: firstLanding.x,
-      z: firstLanding.z,
+      x: target.x,
+      z: target.z,
       power: launch.power,
       club: launch.club,
-      samples: traj.samples.slice(0, traj.firstContactIdx + 1),
+      samples,
     });
   }
 

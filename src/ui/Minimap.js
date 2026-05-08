@@ -39,9 +39,13 @@ export class Minimap {
     this.targetX = null;
     this.targetZ = null;
     this.trajectory = null;
+    // Range Finder item — when true, draw 50/100/150 yd rings centered on ball.
+    this.showRangeRings = false;
 
     this.setLayout(layout);
   }
+
+  setRangeRings(show) { this.showRangeRings = !!show; }
 
   /** Swap the hole layout (called when a new hole is loaded). */
   setLayout(layout) {
@@ -158,6 +162,24 @@ export class Minimap {
     ctx.moveTo(cupCx + 0.5, cupCz - 9);
     ctx.lineTo(cupCx + 0.5, cupCz);
     ctx.stroke();
+
+    // Range Finder rings — drawn under the trajectory so they don't clutter
+    // the dotted path. Centered on the live ball position.
+    if (this.showRangeRings) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      const ballPx = this._tx(this.ballX);
+      const ballPy = this._tz(this.ballZ);
+      for (const yards of [50, 100, 150]) {
+        ctx.beginPath();
+        ctx.arc(ballPx, ballPy, this._scaleX(yards), 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
 
     // trajectory dots
     if (this.trajectory && this.trajectory.length > 1) {

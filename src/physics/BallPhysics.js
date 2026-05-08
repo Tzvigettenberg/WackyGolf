@@ -30,7 +30,9 @@ export const SURFACE_MODIFIERS = {
   fairway: { friction: 1.0, bounce: 1.0,  bounceFriction: 1.0  },
   green:   { friction: 0.55, bounce: 0.55, bounceFriction: 0.85 },
   rough:   { friction: 1.9, bounce: 0.45, bounceFriction: 0.7  },
-  sand:    { friction: 4.0, bounce: 0.10, bounceFriction: 0.45 },
+  // Sand is a death trap — rolling through eats almost all your speed,
+  // and bounces deaden hard. If you land in it, you stay in it.
+  sand:    { friction: 9.5, bounce: 0.06, bounceFriction: 0.25 },
   // water: not really applied — ball stops on contact and a penalty kicks in,
   // see step() below. Listed here so any code looking up a modifier won't crash.
   water:   { friction: 0,   bounce: 0,    bounceFriction: 0 },
@@ -106,6 +108,11 @@ export class BallPhysics {
 
     this.isAtRest = true;
     this.isHoled = false;
+
+    // Item hook — items can multiply the vertical bounce energy retained on
+    // ground contact. 1.0 = default; Bouncy Ball pushes this up. Host should
+    // refresh this before each shot from current run state.
+    this.bounceMultiplier = 1.0;
 
     // callbacks the host wires up
     this.onHoled = null;
@@ -184,8 +191,9 @@ export class BallPhysics {
       const mod = SURFACE_MODIFIERS[surface];
 
       if (this.velocity.y < BOUNCE_VY_THRESHOLD) {
-        // bounce — surface attenuates both vertical and horizontal energy
-        this.velocity.y = -this.velocity.y * BOUNCE * mod.bounce;
+        // bounce — surface attenuates both vertical and horizontal energy.
+        // bounceMultiplier (Bouncy Ball) scales just the vertical retention.
+        this.velocity.y = -this.velocity.y * BOUNCE * mod.bounce * this.bounceMultiplier;
         this.velocity.x *= BOUNCE_FRICTION * mod.bounceFriction;
         this.velocity.z *= BOUNCE_FRICTION * mod.bounceFriction;
       } else {
@@ -241,7 +249,7 @@ const SAMPLE_INTERVAL = 3;            // emit a trajectory sample every N steps 
 const MAX_SAMPLES = 60;               // hard cap on trajectory points returned
 
 /** One physics sub-step. Mutates the {p, v} pair. Returns true once at rest. */
-function _step(p, v, surfaces) {
+function _step(p, v, surfaces, bounceMultiplier = 1.0) {
   v.y += GRAVITY * PREDICT_DT;
 
   const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
@@ -269,7 +277,7 @@ function _step(p, v, surfaces) {
     const mod = SURFACE_MODIFIERS[surface];
 
     if (v.y < BOUNCE_VY_THRESHOLD) {
-      v.y = -v.y * BOUNCE * mod.bounce;
+      v.y = -v.y * BOUNCE * mod.bounce * bounceMultiplier;
       v.x *= BOUNCE_FRICTION * mod.bounceFriction;
       v.z *= BOUNCE_FRICTION * mod.bounceFriction;
     } else {
@@ -290,11 +298,11 @@ function _step(p, v, surfaces) {
  * Forward-simulate to final rest. Returns { x, y, z } of resting position.
  * Used by the cyan ground ring + minimap target circle.
  */
-export function predictRest(startPos, startVel, surfaces) {
+export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   for (let i = 0; i < PREDICT_MAX_STEPS; i++) {
-    if (_step(p, v, surfaces)) return { x: p.x, y: p.y, z: p.z };
+    if (_step(p, v, surfaces, bounceMultiplier)) return { x: p.x, y: p.y, z: p.z };
   }
   return { x: p.x, y: p.y, z: p.z };
 }
@@ -310,7 +318,7 @@ export function predictRest(startPos, startVel, surfaces) {
  *                     3D orb display to the airborne arc only — the part
  *                     of the prediction that's most informative to the player.
  */
-export function predictTrajectory(startPos, startVel, surfaces) {
+export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier = 1.0) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   const samples = [];
@@ -323,7 +331,7 @@ export function predictTrajectory(startPos, startVel, surfaces) {
       samples.push({ x: p.x, y: p.y, z: p.z });
     }
 
-    const atRest = _step(p, v, surfaces);
+    const atRest = _step(p, v, surfaces, bounceMultiplier);
 
     if (firstContactIdx < 0 && wasAirborne && p.y <= BALL_RADIUS + 0.05) {
       firstContactIdx = Math.max(0, samples.length - 1);

@@ -10,7 +10,7 @@ import {
 
 import { buildHole, disposeHole, buildBall, buildSceneBackdrop } from './scene/Hole.js';
 import { FollowCamera } from './scene/FollowCamera.js';
-import { BallPhysics, BALL_RADIUS } from './physics/BallPhysics.js';
+import { BallPhysics, BALL_RADIUS, getSurfaceAt } from './physics/BallPhysics.js';
 import { SwingController } from './input/SwingController.js';
 import { Bag } from './gameplay/Club.js';
 import { ClubSelector } from './ui/ClubSelector.js';
@@ -24,6 +24,7 @@ import { TitleScreen } from './ui/TitleScreen.js';
 import { PauseMenu } from './ui/PauseMenu.js';
 import { CashOut } from './ui/CashOut.js';
 import { Shop } from './ui/Shop.js';
+import { ItemBar } from './ui/ItemBar.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -128,8 +129,29 @@ function hideRunOver() {
   runOverEl.classList.remove('shown');
 }
 
+// Apply item-driven world effects: ball color/glow, bounce multiplier on
+// physics, minimap range rings. Re-runs every time the run state changes
+// (purchase, sale, hole start) so visuals stay in sync with the bag.
+function applyItemEffects() {
+  // Bouncy Ball — orange ball + bouncier physics (predictor mirrors this value
+  // via getBounceMultiplier so the landing marker stays accurate).
+  if (run.hasItem('bouncy-ball')) {
+    ballMesh.material.color.setHex(0xff7a2a);
+    if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x331100);
+    physics.bounceMultiplier = 1.65;
+  } else {
+    ballMesh.material.color.setHex(0xffffff);
+    if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x000000);
+    physics.bounceMultiplier = 1.0;
+  }
+
+  // Range Finder — distance rings on the minimap
+  minimap.setRangeRings(run.hasItem('range-finder'));
+}
+
 run.onChange(() => {
   updateHUD();
+  applyItemEffects();
 });
 updateHUD();
 
@@ -139,6 +161,8 @@ const cashOut = new CashOut({
     cashOut.hide();
     // Open the Pro Shop. Continue button there will advance the hole.
     shop.show({ holeName: currentHole && currentHole.name });
+    // Country Club Card discounts shop prices — pulse it as the shop opens.
+    if (run.hasItem('country-club-card')) itemBar.trigger('country-club-card');
   },
 });
 
@@ -316,6 +340,10 @@ const minimap = new Minimap({
 const powerMeter = new PowerMeter();
 const rotateControls = new RotateControls(followCamera);
 
+// In-game item bar — shows held items, lights them up when their effects
+// are active, pulses them on trigger events.
+const itemBar = new ItemBar({ run });
+
 // ----- swing controller -----
 const swing = new SwingController({
   ball: physics,
@@ -324,6 +352,14 @@ const swing = new SwingController({
   canvas: renderer.domElement,
   bag,
   onShotFired: () => {
+    // Trigger item pulses BEFORE run.onShot increments — Lucky Tee fires on
+    // strokes === 0, and Heavy Driver/Driver Specialist/Lead Wedge fire
+    // whenever the shot uses them.
+    const club = bag.active;
+    if (club.id === 'driver' && run.hasItem('heavy-driver')) itemBar.trigger('heavy-driver');
+    if (run.strokes === 0 && run.hasItem('lucky-tee')) itemBar.trigger('lucky-tee');
+    if (club.id === 'driver' && run.hasItem('driver-specialist')) itemBar.trigger('driver-specialist');
+    if (club.id === 'wedge' && run.hasItem('lead-wedge')) itemBar.trigger('lead-wedge');
     run.onShot();
     startDistanceCounter();
   },
@@ -338,8 +374,24 @@ const swing = new SwingController({
       powerMeter.set(null);
     }
   },
-  // Player Power stat boosts effective club speed.
-  getPowerMultiplier: () => run.powerMultiplier,
+  // Items boost effective club speed. Heavy Driver and Driver Specialist
+  // are driver-only (the names imply it). Lead Wedge is wedge-only. Lucky
+  // Tee triggers on the first shot of any hole regardless of club.
+  getPowerMultiplier: (club) => {
+    let mult = 1;
+    if (club && club.id === 'driver') {
+      mult *= 1 + 0.10 * run.itemCount('heavy-driver');
+      if (run.hasItem('driver-specialist')) mult *= 1.25;
+    }
+    if (club && club.id === 'wedge' && run.hasItem('lead-wedge')) mult *= 1.25;
+    if (run.strokes === 0 && run.hasItem('lucky-tee')) mult *= 1.20;
+    return mult;
+  },
+  // Eagle Eye reveals the full bounce + roll path on the minimap.
+  getShowFullTrajectory: () => run.hasItem('eagle-eye'),
+  // Bouncy Ball makes the ball physically bouncier — predictor must mirror
+  // physics or the landing marker lies. 1.0 = default.
+  getBounceMultiplier: () => (run.hasItem('bouncy-ball') ? 1.65 : 1.0),
 });
 swing.setSurfaces(currentHole.surfaces);
 
@@ -376,6 +428,10 @@ function loadCurrentHole() {
   run.startHole(holeMetaFromTemplate(template));
   swing.setEnabled(true);
 
+  // Trust Fund pays out at hole start — flash the pill so the player
+  // sees the connection between the +$ and the item.
+  if (run.hasItem('trust-fund')) itemBar.trigger('trust-fund');
+
   // unlock this hole in the collection
   collection.discoverHole(currentHole.id);
 }
@@ -397,6 +453,11 @@ physics.onHoled = () => {
   if (!result) return;
   swing.setEnabled(false);
   freezeAndFadeDistance();
+
+  // Compound Interest doubles the interest cap — pulse it when interest pays.
+  if (run.hasItem('compound-interest') && result.breakdown.interest > 0) {
+    itemBar.trigger('compound-interest');
+  }
   // Brief delay so the player gets the satisfaction of seeing the ball
   // drop into the cup before the cash-out overlay appears.
   setTimeout(() => {
@@ -419,6 +480,19 @@ physics.onCameToRest = () => {
     return;
   }
   freezeAndFadeDistance();
+
+  // Sandbagger — +$3 every time the ball lands in a bunker, per copy owned.
+  if (run.hasItem('sandbagger') && currentHole.surfaces) {
+    const surf = getSurfaceAt(currentHole.surfaces, physics.position.x, physics.position.z);
+    if (surf === 'sand') {
+      const bonus = 3 * run.itemCount('sandbagger');
+      run.cash += bonus;
+      showScoreBanner('SANDBAGGER!', bonus);
+      itemBar.trigger('sandbagger');
+      run._emit();
+    }
+  }
+
   if (run.checkBustOnRest()) {
     swing.setEnabled(false);
     showRunOver();
@@ -507,6 +581,10 @@ function frame() {
 
   // smooth the visible landing marker each frame
   swing.tick();
+
+  // refresh item-bar pill states (active conditions, expired triggers).
+  // Cheap — touches DOM only when classes actually change.
+  itemBar.update({ club: bag.active, isAiming: swing.isAiming, isAtRest: physics.isAtRest });
 
   // distance counter — straight-line yards from where this shot started
   if (shotStartPos) {

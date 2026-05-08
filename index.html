@@ -35,7 +35,7 @@
       text-transform: uppercase;
     }
     #hud-stats {
-      display: flex; gap: 5px; flex-wrap: wrap;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
     }
     #hud-stats > div, #hud-stats > button {
       font-size: 13px; font-weight: 700;
@@ -61,7 +61,58 @@
     body.title-active #minimap,
     body.title-active #power-meter,
     body.title-active #shot-distance,
+    body.title-active #item-bar,
     body.title-active .rotate-btn { display: none !important; }
+
+    /* In-game item bar — small column on the right edge under the minimap.
+       One pill per held item instance. Lights up when its effect is being
+       applied; pulses on trigger events. */
+    #item-bar {
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 12px) + 156px);  /* under minimap */
+      right: 12px;
+      display: flex; flex-direction: column; gap: 6px;
+      pointer-events: none;
+      z-index: 4;
+    }
+    #item-bar .item-pill {
+      width: 38px; height: 38px;
+      border-radius: 9px;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1.5px solid rgba(255, 255, 255, 0.18);
+      color: rgba(255, 255, 255, 0.55);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 13px; letter-spacing: 0.5px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      transition: background 0.18s ease, border-color 0.18s ease,
+                  color 0.18s ease, box-shadow 0.18s ease, transform 0.12s ease;
+    }
+    #item-bar .item-pill .pill-short {
+      text-shadow: 0 1px 2px rgba(0,0,0,0.7);
+    }
+    /* Active = effect would apply right now → border + label brighten */
+    #item-bar .item-pill.active {
+      background: rgba(0, 0, 0, 0.55);
+      border-color: var(--rarity-color, white);
+      color: var(--rarity-color, white);
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.18),
+                  0 2px 8px rgba(0, 0, 0, 0.4);
+    }
+    /* Triggered = item just paid out → bigger pulse glow */
+    #item-bar .item-pill.triggered {
+      background: var(--rarity-color, white);
+      border-color: var(--rarity-color, white);
+      color: #1f3a2a;
+      transform: scale(1.18);
+      box-shadow: 0 0 22px var(--rarity-color, white),
+                  0 4px 14px rgba(0, 0, 0, 0.45);
+      animation: item-trigger-pulse 0.7s ease-out;
+    }
+    @keyframes item-trigger-pulse {
+      0%   { transform: scale(1.0); }
+      30%  { transform: scale(1.25); }
+      100% { transform: scale(1.18); }
+    }
 
     /* Title screen */
     #title-screen {
@@ -235,6 +286,200 @@
       color: #66e0a3;
       border: 1.5px solid #66e0a3;
     }
+
+    /* Items tab — bag slots + shop offers */
+    #shop .items-section { margin-bottom: 12px; }
+    #shop .items-section:last-child { margin-bottom: 0; }
+    #shop .items-section-title {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 11px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin: 4px 4px 8px;
+    }
+    #shop .items-section-title .bag-count {
+      font-weight: 800;
+      color: #ffd86b;
+      letter-spacing: 0.5px;
+    }
+    #shop .bag-slots {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 6px;
+      padding: 8px;
+      background: rgba(0,0,0,0.22);
+      border-radius: 10px;
+    }
+    #shop .bag-slot {
+      background: rgba(255,255,255,0.06);
+      border: 1.5px dashed rgba(255,255,255,0.18);
+      border-radius: 8px;
+      min-height: 56px;
+      padding: 6px 8px;
+      display: flex; flex-direction: column; align-items: stretch; justify-content: center;
+      gap: 5px;
+      transition: background 0.15s ease, border-color 0.15s ease;
+    }
+    #shop .bag-slot.empty {
+      align-items: center; justify-content: center;
+      opacity: 0.45;
+    }
+    #shop .bag-slot:not(.empty) {
+      background: rgba(255,255,255,0.08);
+      border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.3));
+      border-style: solid;
+      cursor: pointer;
+    }
+    #shop .bag-slot.expanded {
+      background: rgba(255,255,255,0.14);
+    }
+    #shop .slot-empty-dot {
+      font-size: 18px; font-weight: 800;
+      opacity: 0.55;
+    }
+    #shop .slot-head {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 6px;
+    }
+    #shop .slot-name {
+      flex: 1; min-width: 0;
+      font-size: 12px; font-weight: 800;
+      color: var(--rarity-color, white);
+      line-height: 1.2;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #shop .slot-info {
+      width: 18px; height: 18px;
+      flex-shrink: 0;
+      padding: 0;
+      background: rgba(255,255,255,0.12);
+      color: white;
+      border: 1px solid rgba(255,255,255,0.30);
+      border-radius: 50%;
+      font-size: 10px; font-weight: 900;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1;
+    }
+    #shop .slot-desc {
+      font-size: 10.5px;
+      line-height: 1.35;
+      opacity: 0.85;
+      padding: 4px 2px 2px;
+      border-top: 1px dashed rgba(255,255,255,0.18);
+    }
+    #shop .slot-sell {
+      pointer-events: auto;
+      width: 100%;
+      padding: 5px 8px;
+      background: rgba(255,255,255,0.10);
+      color: white;
+      border: 1.5px solid rgba(255,255,255,0.25);
+      border-radius: 6px;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+      transition: transform 0.08s ease, background 0.15s ease;
+    }
+    #shop .slot-sell:hover { background: rgba(255,107,107,0.25); border-color: rgba(255,107,107,0.6); }
+    #shop .slot-sell:active { transform: scale(0.95); }
+
+    /* Reroll button — sits in the "For sale" section header */
+    #shop .reroll-btn {
+      pointer-events: auto;
+      padding: 5px 10px;
+      background: rgba(255,216,107,0.15);
+      color: #ffd86b;
+      border: 1.5px solid rgba(255,216,107,0.45);
+      border-radius: 999px;
+      font-size: 10px; font-weight: 800; letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.08s ease;
+    }
+    #shop .reroll-btn:active { transform: scale(0.95); }
+    #shop .reroll-btn:disabled,
+    #shop .reroll-btn.cant-afford {
+      opacity: 0.4; cursor: not-allowed;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.5);
+      border-color: rgba(255,255,255,0.18);
+    }
+    #shop .shop-offers {
+      display: flex; flex-direction: column; gap: 8px;
+    }
+    #shop .item-card {
+      background: rgba(0,0,0,0.22);
+      border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.18));
+      border-radius: 10px;
+      padding: 10px 12px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      grid-template-areas:
+        "rarity buy"
+        "name   buy"
+        "desc   buy";
+      column-gap: 12px;
+      row-gap: 2px;
+      align-items: center;
+      transition: transform 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+    }
+    #shop .item-card.just-bought {
+      background: rgba(255,216,107,0.25);
+      transform: scale(1.02);
+    }
+    #shop .item-card.sold { opacity: 0.55; }
+    #shop .item-rarity {
+      grid-area: rarity;
+      font-size: 9px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--rarity-color, white);
+      opacity: 0.85;
+    }
+    #shop .item-name {
+      grid-area: name;
+      font-size: 14px; font-weight: 800;
+      color: white;
+    }
+    #shop .item-desc {
+      grid-area: desc;
+      font-size: 11px;
+      opacity: 0.7;
+      line-height: 1.3;
+    }
+    #shop .item-buy {
+      grid-area: buy;
+      pointer-events: auto;
+      min-width: 64px;
+      padding: 9px 14px;
+      background: #ffd86b;
+      color: #1f3a2a;
+      border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 900; letter-spacing: 0.5px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.08s ease, opacity 0.15s ease;
+    }
+    #shop .item-buy:active { transform: scale(0.95); }
+    #shop .item-buy:disabled,
+    #shop .item-buy.cant-afford {
+      background: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.5);
+      cursor: not-allowed;
+    }
+    #shop .item-buy.sold {
+      background: rgba(102,224,163,0.2);
+      color: #66e0a3;
+      border: 1.5px solid #66e0a3;
+    }
+    #shop .item-buy.bag-full {
+      background: rgba(255,107,107,0.18);
+      color: #ff9b9b;
+      border: 1.5px solid rgba(255,107,107,0.5);
+    }
+
     #shop .shop-continue {
       pointer-events: auto;
       padding: 14px 22px;
@@ -757,12 +1002,11 @@
         <div class="shop-cash">$0</div>
       </header>
       <nav class="shop-tabs">
-        <button class="shop-tab active" type="button" data-tab="stats">Stats</button>
+        <button class="shop-tab active" type="button" data-tab="items">Items</button>
         <button class="shop-tab" type="button" data-tab="clubs" disabled>Clubs</button>
-        <button class="shop-tab" type="button" data-tab="items" disabled>Items</button>
       </nav>
       <main class="shop-body">
-        <div class="tab-content stats-tab"></div>
+        <div class="tab-content items-tab"></div>
       </main>
       <button class="shop-continue" type="button">Continue ▸</button>
     </div>
