@@ -753,6 +753,8 @@
     }
     #pause-menu button:active { transform: scale(0.97); }
     #pause-resume { background: white; color: #111; }
+    #pause-mute   { background: rgba(255, 255, 255, 0.10); color: white; border: 1.5px solid rgba(255, 255, 255, 0.30); }
+    #pause-mute.muted { background: rgba(255, 80, 80, 0.18); color: #ff9b9b; border-color: rgba(255, 120, 120, 0.55); }
     #pause-quit   { background: rgba(255, 255, 255, 0.16); color: white; border: 1.5px solid rgba(255, 255, 255, 0.35); }
 
     /* Collection sits below Play/Resume — visually secondary */
@@ -1659,6 +1661,7 @@
     <div class="pause-card">
       <h2>Paused</h2>
       <button id="pause-resume" type="button">Resume</button>
+      <button id="pause-mute" type="button"><i class="fa-solid fa-volume-high"></i>&nbsp;&nbsp;Sound On</button>
       <button id="pause-quit" type="button">Quit to Title</button>
     </div>
   </div>

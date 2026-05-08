@@ -1,4 +1,5 @@
 // CashOut — Phase 4 prep (v2: single-row stroke track)
+import { sfx } from '../audio/Sfx.js';
 //
 // Full-screen overlay shown after holing out. One row of stroke-limit circles:
 //   green   = stroke used (within par)
@@ -53,6 +54,7 @@ export class CashOut {
 
     this.btn = this.modal.querySelector('.cashout-btn');
     this.btn.addEventListener('click', () => {
+      sfx.cashGain();
       if (this.onCashOut) this.onCashOut();
     });
 

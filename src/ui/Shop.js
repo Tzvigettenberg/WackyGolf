@@ -10,6 +10,7 @@
 import { ITEMS, itemById } from '../content/items.js';
 import { clubSellValue } from '../gameplay/Club.js';
 import { REROLL_COST } from '../core/Run.js';
+import { sfx } from '../audio/Sfx.js';
 
 const RARITY_COLORS = {
   common:    '#cfd9d6',
@@ -40,6 +41,7 @@ export class Shop {
     this.expandedSlot = -1;
 
     this.continueBtn.addEventListener('click', () => {
+      sfx.uiClick();
       this.hide();
       if (this.onContinue) this.onContinue();
     });
@@ -196,6 +198,7 @@ export class Shop {
       this.run.cash += cost;
       return;
     }
+    sfx.uiBuy();
     this._punchCard(`.item-card[data-item-id="${id}"]`);
     this._refresh();
   }
@@ -216,6 +219,7 @@ export class Shop {
       this.run.cash += cost;
       return;
     }
+    sfx.uiBuy();
     this._punchCard(`.item-card[data-club-id="${id}"]`);
     this._refresh();
   }
@@ -236,6 +240,7 @@ export class Shop {
     const value = this.run.sellValue(item.cost);
     if (!this.run.removeAt(slotIndex)) return;
     this.run.cash += value;
+    sfx.uiSell();
     if (this.expandedSlot === slotIndex) this.expandedSlot = -1;
     else if (this.expandedSlot > slotIndex) this.expandedSlot -= 1;
     this._refresh();
@@ -245,6 +250,7 @@ export class Shop {
     const sold = this.bag.sellClub(id);
     if (!sold) return;
     this.run.cash += clubSellValue(sold);
+    sfx.uiSell();
     this.run._emit();
     this._refresh();
   }
@@ -252,6 +258,7 @@ export class Shop {
   _tryReroll() {
     if (this.run.cash < REROLL_COST) return;
     this.run.cash -= REROLL_COST;
+    sfx.uiReroll();
     this.offers = this._rollOffers(OFFERS_PER_VISIT);
     this.purchasedThisVisit = new Set();
     this._buildOfferCards();

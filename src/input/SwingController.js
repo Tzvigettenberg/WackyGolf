@@ -304,6 +304,6 @@ export class SwingController {
     const launch = this._computeLaunch();
     if (!launch) return;
     this.ball.launch(launch.velocity);
-    this.onShotFired();
+    this.onShotFired(launch.power, launch.club);
   }
 }

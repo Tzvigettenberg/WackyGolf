@@ -20,6 +20,7 @@ import { RotateControls } from './ui/RotateControls.js';
 import { Run } from './core/Run.js';
 import { templateForHole, holeMetaFromTemplate, HOLES, RUN_LENGTH, isBossHole, skipCashFor } from './content/holes.js';
 import { recordRun, formatScore } from './core/highscores.js';
+import { sfx } from './audio/Sfx.js';
 import { Collection } from './ui/Collection.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { PauseMenu } from './ui/PauseMenu.js';
@@ -305,6 +306,7 @@ const TITLE_ORBIT_RATE = 0.18; // rad/sec — gentle showcase orbit (was 0.45, f
 
 const titleScreen = new TitleScreen({
   onPlay: () => {
+    sfx.uiClick();
     // Start a fresh run, regardless of any in-progress state
     clearDistanceImmediate();
     run.resetRun(holeMetaFromTemplate(templateForHole(1), 1));
@@ -316,9 +318,11 @@ const titleScreen = new TitleScreen({
   },
   onResume: () => {
     if (!canResume) return;
+    sfx.uiClick();
     leaveTitleScreen();
   },
   onCollection: () => {
+    sfx.uiClick();
     collection.open();
   },
 });
@@ -347,6 +351,7 @@ const pauseMenu = new PauseMenu({
  * The menu's Resume/Quit handlers clean up all the open modals.
  */
 function openPauseMenu() {
+  sfx.uiClick();
   inGame = false;
   swing.setEnabled(false);
   savedYaw = followCamera.targetYaw;
@@ -451,12 +456,14 @@ function showPreviewFor(targetHole) {
     bagItems: run.items.length,
     bagSlots: run.bagSlots,
     onPlay: () => {
+      sfx.uiClick();
       holePreview.hide();
       document.body.classList.remove('preview-active');
       run.holeNumber = targetHole;
       loadCurrentHole();
     },
     onSkip: () => {
+      sfx.cashGain();
       holePreview.hide();
       run.bankSkipCash(currentSkip);
       showPreviewFor(targetHole + 1);
@@ -489,7 +496,8 @@ const swing = new SwingController({
   camera,
   canvas: renderer.domElement,
   bag,
-  onShotFired: () => {
+  onShotFired: (power) => {
+    sfx.swing(typeof power === 'number' ? power : 0.5);
     // Trigger item pulses BEFORE run.onShot increments — Lucky Tee fires on
     // strokes === 0, and Heavy Driver/Driver Specialist/Lead Wedge fire
     // whenever the shot uses them.
@@ -598,11 +606,18 @@ function advanceToNextHole() {
   showPreviewFor(next);
 }
 
+// Audio: ball bounces — different sound on sand vs grass.
+physics.onBounce = (intensity, surface) => {
+  if (surface === 'sand') sfx.bunker();
+  else sfx.bounce(intensity);
+};
+
 physics.onHoled = () => {
   const result = run.onHoled();
   if (!result) return;
   swing.setEnabled(false);
   freezeAndFadeDistance();
+  sfx.cupDrop();
 
   // Compound Interest doubles the interest cap — pulse it when interest pays.
   if (run.hasItem('compound-interest') && result.breakdown.interest > 0) {
@@ -644,12 +659,14 @@ physics.onCameToRest = () => {
       run.cash += bonus;
       showScoreBanner('SANDBAGGER!', bonus);
       itemBar.trigger('sandbagger');
+      sfx.cashGain();
       run._emit();
     } else if (surf === 'fairway' && run.hasItem('fairway-finder')) {
       const bonus = 1 * run.itemCount('fairway-finder');
       run.cash += bonus;
       // No banner — this is a quiet, frequent payout. Pulse the pill instead.
       itemBar.trigger('fairway-finder');
+      sfx.cashGain();
       run._emit();
     }
   }
@@ -662,6 +679,7 @@ physics.onCameToRest = () => {
 
 function handleWaterPenalty() {
   // +1 penalty stroke
+  sfx.splash();
   run.onShot();
   swing.setEnabled(false);
   showScoreBanner('SPLASH! +1 STROKE', 0);
@@ -683,6 +701,7 @@ function handleWaterPenalty() {
 }
 
 playAgainBtn.addEventListener('click', () => {
+  sfx.uiClick();
   clearDistanceImmediate();
   hideRunOver();
   run.resetRun(holeMetaFromTemplate(templateForHole(1), 1));

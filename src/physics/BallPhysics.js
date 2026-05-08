@@ -117,6 +117,10 @@ export class BallPhysics {
     // callbacks the host wires up
     this.onHoled = null;
     this.onCameToRest = null;
+    // Fired on each ground bounce (bounce branch only, not on rolling). Args:
+    //   intensity — incoming downward speed normalized to roughly 0..1
+    //   surface   — 'fairway' | 'green' | 'rough' | 'sand' | 'water'
+    this.onBounce = null;
   }
 
   reset() {
@@ -193,9 +197,11 @@ export class BallPhysics {
       if (this.velocity.y < BOUNCE_VY_THRESHOLD) {
         // bounce — surface attenuates both vertical and horizontal energy.
         // bounceMultiplier (Bouncy Ball) scales just the vertical retention.
+        const incomingDown = -this.velocity.y;
         this.velocity.y = -this.velocity.y * BOUNCE * mod.bounce * this.bounceMultiplier;
         this.velocity.x *= BOUNCE_FRICTION * mod.bounceFriction;
         this.velocity.z *= BOUNCE_FRICTION * mod.bounceFriction;
+        if (this.onBounce) this.onBounce(Math.min(1, incomingDown / 30), surface);
       } else {
         // rolling — friction scaled by surface
         this.velocity.y = 0;
