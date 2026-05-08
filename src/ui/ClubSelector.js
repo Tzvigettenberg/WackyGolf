@@ -40,7 +40,7 @@ export class ClubSelector {
 
       btn.innerHTML = `
         ${badge}
-        <span class="club-short">${club.short}</span>
+        <i class="club-icon ${club.icon || 'fa-solid fa-club'}"></i>
         <span class="club-name">${club.name}</span>
       `;
 

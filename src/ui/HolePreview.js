@@ -36,7 +36,7 @@ export class HolePreview {
     this.modal.classList.toggle('boss', !!isBossNow);
 
     const bagBadge = (typeof bagItems === 'number' && typeof bagSlots === 'number')
-      ? `<div class="preview-bagcount">🎒 ${bagItems}/${bagSlots}</div>`
+      ? `<div class="preview-bagcount"><i class="fa-solid fa-shapes"></i> ${bagItems}/${bagSlots}</div>`
       : '';
     const cashBadge = (typeof cash === 'number')
       ? `<div class="preview-cash">$${cash}</div>`

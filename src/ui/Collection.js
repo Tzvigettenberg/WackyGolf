@@ -8,9 +8,18 @@
 // fills in over time as you encounter new holes.
 
 import { HOLES } from '../content/holes.js';
+import { ITEMS } from '../content/items.js';
+import { CLUBS } from '../gameplay/Club.js';
 
 const STORAGE_KEY = 'wackygolf_discovered_holes_v1';
 const PREVIEW_PX = 130;
+
+const RARITY_COLORS = {
+  common:    '#cfd9d6',
+  uncommon:  '#7fd6ff',
+  rare:      '#c79cff',
+  legendary: '#ffb84a',
+};
 
 export class Collection {
   constructor({ onShowHoleDetail } = {}) {
@@ -21,14 +30,38 @@ export class Collection {
     this.onShowHoleDetail = onShowHoleDetail || null;
     this.discovered = new Set(this._load());
 
-    // open buttons are wired externally now (e.g., from the title screen)
+    // tab elements
+    this.tabButtons = Array.from(this.modal.querySelectorAll('.collection-tab'));
+    this.tabContents = {
+      holes: this.modal.querySelector('.holes-tab'),
+      items: this.modal.querySelector('.items-tab'),
+      clubs: this.modal.querySelector('.clubs-tab'),
+    };
+    this.itemsGrid = this.modal.querySelector('.items-grid');
+    this.clubsGrid = this.modal.querySelector('.clubs-grid');
+    for (const btn of this.tabButtons) {
+      btn.addEventListener('click', () => this._setTab(btn.dataset.tab));
+    }
+    this.activeTab = 'holes';
+
     this.closeBtn.addEventListener('click', () => this.close());
-    // backdrop click closes
     this.modal.addEventListener('click', (e) => {
       if (e.target === this.modal) this.close();
     });
 
     this._renderGrid();
+    this._renderItems();
+    this._renderClubs();
+  }
+
+  _setTab(name) {
+    this.activeTab = name;
+    for (const btn of this.tabButtons) {
+      btn.classList.toggle('active', btn.dataset.tab === name);
+    }
+    for (const [key, el] of Object.entries(this.tabContents)) {
+      if (el) el.style.display = key === name ? '' : 'none';
+    }
   }
 
   /** Mark a hole as discovered. Updates persistence + grid. */
@@ -102,6 +135,48 @@ export class Collection {
         });
       }
       this.grid.appendChild(card);
+    }
+  }
+
+  _renderItems() {
+    if (!this.itemsGrid) return;
+    this.itemsGrid.innerHTML = '';
+    for (const item of ITEMS) {
+      const card = document.createElement('div');
+      card.className = 'col-card';
+      const color = RARITY_COLORS[item.rarity] || '#fff';
+      card.style.setProperty('--card-color', color);
+      card.innerHTML = `
+        <div class="col-card-icon"><i class="${item.icon || 'fa-solid fa-circle'}"></i></div>
+        <div class="col-card-rarity">${item.rarity}</div>
+        <div class="col-card-name">${escapeHtml(item.name)}</div>
+        <div class="col-card-desc">${escapeHtml(item.desc)}</div>
+        <div class="col-card-meta">$${item.cost}</div>
+      `;
+      this.itemsGrid.appendChild(card);
+    }
+  }
+
+  _renderClubs() {
+    if (!this.clubsGrid) return;
+    this.clubsGrid.innerHTML = '';
+    for (const club of CLUBS) {
+      const card = document.createElement('div');
+      card.className = 'col-card';
+      if (club.special) card.classList.add('special');
+      card.style.setProperty('--card-color', club.color);
+      let limitText = '';
+      if (club.usesPerHole !== undefined) limitText = ` · ${club.usesPerHole}/hole`;
+      else if (club.usesTotal !== undefined) limitText = ` · ${club.usesTotal} uses then breaks`;
+      const costText = club.starter ? 'Starter' : `$${club.cost}`;
+      card.innerHTML = `
+        <div class="col-card-icon"><i class="${club.icon || 'fa-solid fa-club'}"></i></div>
+        <div class="col-card-rarity">${club.special ? 'special' : 'club'}</div>
+        <div class="col-card-name">${escapeHtml(club.name)}</div>
+        <div class="col-card-desc">${escapeHtml(club.desc || '')}</div>
+        <div class="col-card-meta">${costText}${limitText}</div>
+      `;
+      this.clubsGrid.appendChild(card);
     }
   }
 }

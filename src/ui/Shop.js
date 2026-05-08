@@ -1,16 +1,14 @@
-// Shop — Phase 4b/4c
+// Shop — Phase 4d unified
 //
-// Pro Shop modal that opens after the cash-out screen. Two tabs:
+// Single scrolling pane: Bag (items) + Clubs (with sell) + For Sale (mixed
+// pool of items + unowned clubs). One reroll button covers everything.
 //
-//   Items — three random items rolled per visit (Balatro-style). Items take
-//           a bag slot each. Reroll for $REROLL_COST. Tap a held slot to
-//           expand its description; sell button on each.
-//
-//   Clubs — list of clubs the player doesn't own yet. Buy to unlock; the
-//           ClubSelector picks them up automatically. Special clubs come
-//           with use limits and are flagged as such.
+// Each shop offer is either an item or a club; the pool is mixed so a new
+// club popping up feels like a real "ooh!" moment rather than a separate
+// always-present catalog.
 
 import { ITEMS, itemById } from '../content/items.js';
+import { clubSellValue } from '../gameplay/Club.js';
 import { REROLL_COST } from '../core/Run.js';
 
 const RARITY_COLORS = {
@@ -19,6 +17,9 @@ const RARITY_COLORS = {
   rare:      '#c79cff',
   legendary: '#ffb84a',
 };
+
+// Number of offers shown per shop visit, mixed item/club.
+const OFFERS_PER_VISIT = 3;
 
 export class Shop {
   constructor({ run, bag, onContinue }) {
@@ -29,21 +30,12 @@ export class Shop {
     this.modal = document.getElementById('shop');
     this.cashEl = this.modal.querySelector('.shop-cash');
     this.continueBtn = this.modal.querySelector('.shop-continue');
-    this.itemsTabEl = this.modal.querySelector('.items-tab');
-    this.clubsTabEl = this.modal.querySelector('.clubs-tab');
+    this.bodyEl = this.modal.querySelector('.shop-body-inner');
     this.titleEl = this.modal.querySelector('.shop-title');
 
-    // Tab buttons
-    this.tabButtons = Array.from(this.modal.querySelectorAll('.shop-tab'));
-    this.activeTab = 'items';
-    for (const tab of this.tabButtons) {
-      tab.addEventListener('click', () => {
-        if (tab.disabled) return;
-        this._setTab(tab.dataset.tab);
-      });
-    }
-
+    // offers: array of { type: 'item' | 'club', id }
     this.offers = [];
+    // ids (per type prefix, e.g. 'item:heavy-driver') already bought THIS visit.
     this.purchasedThisVisit = new Set();
     this.expandedSlot = -1;
 
@@ -52,7 +44,6 @@ export class Shop {
       if (this.onContinue) this.onContinue();
     });
 
-    // Refresh whenever the run or bag changes.
     run.onChange(() => {
       if (this.modal.classList.contains('shown')) this._refresh();
     });
@@ -61,56 +52,59 @@ export class Shop {
     });
   }
 
-  show({ holeName, holeNumber } = {}) {
+  show({ holeName } = {}) {
     if (this.titleEl) {
       const sub = holeName ? ` · After ${holeName}` : '';
       this.titleEl.textContent = `Pro Shop${sub}`;
     }
-    this.offers = this._rollOffers(3);
+    this.offers = this._rollOffers(OFFERS_PER_VISIT);
     this.purchasedThisVisit = new Set();
     this.expandedSlot = -1;
-    this._setTab('items');
-    this._buildItemsTab();
-    this._buildClubsTab();
+    this._buildBody();
     this._refresh();
     this.modal.classList.add('shown');
   }
 
-  hide() {
-    this.modal.classList.remove('shown');
-  }
+  hide() { this.modal.classList.remove('shown'); }
 
-  // ----- tabs -----
+  // ----- offer pool -----
 
-  _setTab(name) {
-    this.activeTab = name;
-    for (const btn of this.tabButtons) {
-      btn.classList.toggle('active', btn.dataset.tab === name);
+  _buildPool() {
+    const pool = [];
+    for (const item of ITEMS) pool.push({ type: 'item', id: item.id });
+    if (this.bag) {
+      for (const club of this.bag.shopClubs()) pool.push({ type: 'club', id: club.id });
     }
-    if (this.itemsTabEl) this.itemsTabEl.style.display = name === 'items' ? '' : 'none';
-    if (this.clubsTabEl) this.clubsTabEl.style.display = name === 'clubs' ? '' : 'none';
+    return pool;
   }
 
-  // ----- internals: items tab -----
-
-  /** Pick `count` distinct item ids from the pool. */
   _rollOffers(count) {
-    const pool = ITEMS.slice();
+    const pool = this._buildPool();
+    // Fisher–Yates partial shuffle
     for (let i = 0; i < Math.min(count, pool.length); i++) {
       const j = i + Math.floor(Math.random() * (pool.length - i));
       [pool[i], pool[j]] = [pool[j], pool[i]];
     }
-    return pool.slice(0, count).map((it) => it.id);
+    return pool.slice(0, count);
   }
 
-  _buildItemsTab() {
-    this.itemsTabEl.innerHTML = `
+  // ----- DOM scaffolding -----
+
+  _buildBody() {
+    this.bodyEl.innerHTML = `
       <div class="items-section">
         <div class="items-section-title">
-          <span>Bag</span>
+          <span>Items</span>
           <span class="bag-count"></span>
         </div>
         <div class="bag-slots"></div>
+      </div>
+      <div class="items-section">
+        <div class="items-section-title">
+          <span>Clubs</span>
+          <span class="clubs-count"></span>
+        </div>
+        <div class="owned-clubs"></div>
       </div>
       <div class="items-section">
         <div class="items-section-title">
@@ -120,76 +114,145 @@ export class Shop {
         <div class="shop-offers"></div>
       </div>
     `;
-
-    const rerollBtn = this.itemsTabEl.querySelector('.reroll-btn');
-    rerollBtn.addEventListener('click', () => this._tryReroll());
-
+    this.bodyEl.querySelector('.reroll-btn').addEventListener('click', () => this._tryReroll());
     this._buildOfferCards();
   }
 
-  /** (Re)build the offer cards section in place. */
   _buildOfferCards() {
-    const offersEl = this.itemsTabEl.querySelector('.shop-offers');
+    const offersEl = this.bodyEl.querySelector('.shop-offers');
     offersEl.innerHTML = '';
-    for (const id of this.offers) {
-      const item = itemById(id);
-      if (!item) continue;
-      const card = document.createElement('div');
-      card.className = 'item-card';
-      card.dataset.itemId = id;
-      card.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-      card.innerHTML = `
-        <div class="item-rarity">${item.rarity}</div>
-        <div class="item-name">${item.name}</div>
-        <div class="item-desc">${item.desc}</div>
-        <button class="item-buy" type="button">$0</button>
-      `;
-      const btn = card.querySelector('.item-buy');
-      btn.addEventListener('click', () => this._tryBuy(id));
-      offersEl.appendChild(card);
+    for (const offer of this.offers) {
+      const card = offer.type === 'item'
+        ? this._buildItemCard(offer.id)
+        : this._buildClubCard(offer.id);
+      if (card) offersEl.appendChild(card);
     }
   }
 
-  _tryBuy(id) {
-    if (this.purchasedThisVisit.has(id)) return;
+  _buildItemCard(id) {
+    const item = itemById(id);
+    if (!item) return null;
+    const card = document.createElement('div');
+    card.className = 'item-card';
+    card.dataset.itemId = id;
+    card.dataset.offerType = 'item';
+    card.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
+    card.innerHTML = `
+      <div class="card-icon"><i class="${item.icon || 'fa-solid fa-circle'}"></i></div>
+      <div class="card-body">
+        <div class="item-rarity">${item.rarity}</div>
+        <div class="item-name">${item.name}</div>
+        <div class="item-desc">${item.desc}</div>
+      </div>
+      <button class="item-buy" type="button">$0</button>
+    `;
+    card.querySelector('.item-buy').addEventListener('click', () => this._tryBuyItem(id));
+    return card;
+  }
+
+  _buildClubCard(id) {
+    const club = this.bag.shopClubs().find((c) => c.id === id);
+    if (!club) return null;
+    const card = document.createElement('div');
+    card.className = 'item-card club-offer';
+    card.dataset.clubId = id;
+    card.dataset.offerType = 'club';
+    card.style.setProperty('--rarity-color', club.color);
+    if (club.special) card.classList.add('special');
+
+    let limit = '';
+    if (club.usesPerHole !== undefined) limit = `${club.usesPerHole}/hole`;
+    else if (club.usesTotal !== undefined) limit = `${club.usesTotal} uses then breaks`;
+
+    card.innerHTML = `
+      <div class="card-icon"><i class="${club.icon || 'fa-solid fa-club'}" style="color: ${club.color}"></i></div>
+      <div class="card-body">
+        <div class="item-rarity">${club.special ? 'special club' : 'club'}</div>
+        <div class="item-name">${club.name}</div>
+        <div class="item-desc">${club.desc || ''}</div>
+        ${limit ? `<div class="club-card-limit">${limit}</div>` : ''}
+      </div>
+      <button class="item-buy" type="button">$0</button>
+    `;
+    card.querySelector('.item-buy').addEventListener('click', () => this._tryBuyClub(id));
+    return card;
+  }
+
+  // ----- buy / sell -----
+
+  _tryBuyItem(id) {
+    const key = `item:${id}`;
+    if (this.purchasedThisVisit.has(key)) return;
     if (!this.run.hasFreeSlot) return;
     const item = itemById(id);
     if (!item) return;
     const cost = this.run.effectiveCost(item.cost);
     if (this.run.cash < cost) return;
 
-    this.purchasedThisVisit.add(id);
+    this.purchasedThisVisit.add(key);
     this.run.cash -= cost;
     if (!this.run.addItem(id)) {
-      this.purchasedThisVisit.delete(id);
+      this.purchasedThisVisit.delete(key);
       this.run.cash += cost;
       return;
     }
-    const card = this.itemsTabEl.querySelector(`.item-card[data-item-id="${id}"]`);
+    this._punchCard(`.item-card[data-item-id="${id}"]`);
+    this._refresh();
+  }
+
+  _tryBuyClub(id) {
+    const key = `club:${id}`;
+    if (this.purchasedThisVisit.has(key)) return;
+    if (!this.bag.hasFreeClubSlot) return;
+    const club = this.bag.shopClubs().find((c) => c.id === id);
+    if (!club) return;
+    const cost = this.run.effectiveCost(club.cost);
+    if (this.run.cash < cost) return;
+
+    this.purchasedThisVisit.add(key);
+    this.run.cash -= cost;
+    if (!this.bag.unlock(id)) {
+      this.purchasedThisVisit.delete(key);
+      this.run.cash += cost;
+      return;
+    }
+    this._punchCard(`.item-card[data-club-id="${id}"]`);
+    this._refresh();
+  }
+
+  _punchCard(selector) {
+    const card = this.bodyEl.querySelector(selector);
     if (card) {
       card.classList.add('just-bought');
       setTimeout(() => card.classList.remove('just-bought'), 350);
     }
-    this._refresh();
   }
 
-  _trySell(slotIndex) {
+  _trySellItem(slotIndex) {
     const id = this.run.items[slotIndex];
     if (!id) return;
     const item = itemById(id);
     if (!item) return;
     const value = this.run.sellValue(item.cost);
-    const removed = this.run.removeAt(slotIndex);
-    if (removed) this.run.cash += value;
+    if (!this.run.removeAt(slotIndex)) return;
+    this.run.cash += value;
     if (this.expandedSlot === slotIndex) this.expandedSlot = -1;
     else if (this.expandedSlot > slotIndex) this.expandedSlot -= 1;
+    this._refresh();
+  }
+
+  _trySellClub(id) {
+    const sold = this.bag.sellClub(id);
+    if (!sold) return;
+    this.run.cash += clubSellValue(sold);
+    this.run._emit();
     this._refresh();
   }
 
   _tryReroll() {
     if (this.run.cash < REROLL_COST) return;
     this.run.cash -= REROLL_COST;
-    this.offers = this._rollOffers(3);
+    this.offers = this._rollOffers(OFFERS_PER_VISIT);
     this.purchasedThisVisit = new Set();
     this._buildOfferCards();
     this._refresh();
@@ -200,116 +263,123 @@ export class Shop {
     this._refresh();
   }
 
-  // ----- internals: clubs tab -----
-
-  _buildClubsTab() {
-    if (!this.clubsTabEl || !this.bag) return;
-    // Description text + container that we'll re-render in _refresh
-    this.clubsTabEl.innerHTML = `
-      <div class="items-section">
-        <div class="items-section-title">
-          <span>Your clubs</span>
-        </div>
-        <div class="owned-clubs"></div>
-      </div>
-      <div class="items-section">
-        <div class="items-section-title">
-          <span>For sale</span>
-        </div>
-        <div class="club-offers"></div>
-      </div>
-    `;
-  }
-
-  _tryBuyClub(clubId) {
-    if (!this.bag) return;
-    const club = this.bag.shopClubs().find((c) => c.id === clubId);
-    if (!club) return;
-    const cost = this.run.effectiveCost(club.cost);
-    if (this.run.cash < cost) return;
-    this.run.cash -= cost;
-    if (!this.bag.unlock(clubId)) {
-      this.run.cash += cost;
-      return;
-    }
-    // Force a refresh — bag.onChange will trigger this too, but doing it here
-    // makes the cash counter and the disappearance of the offer card paint
-    // in the same frame.
-    this._refresh();
-  }
-
-  // ----- shared refresh -----
+  // ----- refresh -----
 
   _refresh() {
     this.cashEl.textContent = `$${this.run.cash}`;
-    this._refreshItemsTab();
-    this._refreshClubsTab();
+    this._refreshBag();
+    this._refreshClubs();
+    this._refreshOffers();
   }
 
-  _refreshItemsTab() {
-    if (!this.itemsTabEl) return;
-    const countEl = this.itemsTabEl.querySelector('.bag-count');
-    if (countEl) {
-      countEl.textContent = `${this.run.items.length} / ${this.run.bagSlots}`;
-    }
+  _refreshBag() {
+    const countEl = this.bodyEl.querySelector('.bag-count');
+    if (countEl) countEl.textContent = `${this.run.items.length} / ${this.run.bagSlots}`;
 
-    const slotsEl = this.itemsTabEl.querySelector('.bag-slots');
-    if (slotsEl) {
-      slotsEl.innerHTML = '';
-      for (let i = 0; i < this.run.bagSlots; i++) {
-        const slot = document.createElement('div');
-        slot.className = 'bag-slot';
-        const id = this.run.items[i];
-        if (!id) {
-          slot.classList.add('empty');
-          slot.innerHTML = '<span class="slot-empty-dot">+</span>';
-          slotsEl.appendChild(slot);
-          continue;
-        }
-        const item = itemById(id);
-        if (!item) continue;
-        const sellValue = this.run.sellValue(item.cost);
-        const expanded = this.expandedSlot === i;
-        slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-        if (expanded) slot.classList.add('expanded');
-        slot.innerHTML = `
-          <div class="slot-head">
-            <div class="slot-name">${item.name}</div>
-            <button class="slot-info" type="button" aria-label="Show description">i</button>
-          </div>
-          ${expanded ? `<div class="slot-desc">${item.desc}</div>` : ''}
-          <button class="slot-sell" type="button">Sell $${sellValue}</button>
-        `;
-
-        const idx = i;
-        slot.querySelector('.slot-head').addEventListener('click', (e) => {
-          if (e.target.closest('.slot-sell')) return;
-          this._toggleExpand(idx);
-        });
-        slot.querySelector('.slot-sell').addEventListener('click', (e) => {
-          e.stopPropagation();
-          this._trySell(idx);
-        });
+    const slotsEl = this.bodyEl.querySelector('.bag-slots');
+    if (!slotsEl) return;
+    slotsEl.innerHTML = '';
+    for (let i = 0; i < this.run.bagSlots; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'bag-slot';
+      const id = this.run.items[i];
+      if (!id) {
+        slot.classList.add('empty');
+        slot.innerHTML = '<span class="slot-empty-dot">+</span>';
         slotsEl.appendChild(slot);
+        continue;
       }
-    }
-
-    const rerollBtn = this.itemsTabEl.querySelector('.reroll-btn');
-    if (rerollBtn) {
-      const canAffordReroll = this.run.cash >= REROLL_COST;
-      rerollBtn.disabled = !canAffordReroll;
-      rerollBtn.classList.toggle('cant-afford', !canAffordReroll);
-    }
-
-    const cards = this.itemsTabEl.querySelectorAll('.item-card');
-    const bagFull = !this.run.hasFreeSlot;
-    for (const card of cards) {
-      const id = card.dataset.itemId;
       const item = itemById(id);
       if (!item) continue;
-      const cost = this.run.effectiveCost(item.cost);
+      const sellValue = this.run.sellValue(item.cost);
+      const expanded = this.expandedSlot === i;
+      slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
+      if (expanded) slot.classList.add('expanded');
+      slot.innerHTML = `
+        <div class="slot-head">
+          <i class="slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>
+          <div class="slot-name">${item.name}</div>
+          <button class="slot-info" type="button" aria-label="Show description">i</button>
+        </div>
+        ${expanded ? `<div class="slot-desc">${item.desc}</div>` : ''}
+        <button class="slot-sell" type="button">Sell $${sellValue}</button>
+      `;
+      const idx = i;
+      slot.querySelector('.slot-head').addEventListener('click', (e) => {
+        if (e.target.closest('.slot-sell')) return;
+        this._toggleExpand(idx);
+      });
+      slot.querySelector('.slot-sell').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._trySellItem(idx);
+      });
+      slotsEl.appendChild(slot);
+    }
+  }
+
+  _refreshClubs() {
+    if (!this.bag) return;
+    const countEl = this.bodyEl.querySelector('.clubs-count');
+    const owned = this.bag.ownedClubs();
+    if (countEl) countEl.textContent = `${owned.length} / ${owned.length + this.bag.clubSlotsLeft}`;
+
+    const list = this.bodyEl.querySelector('.owned-clubs');
+    if (!list) return;
+    list.innerHTML = '';
+    for (const club of owned) {
+      const sellValue = clubSellValue(club);
+      const canSell = owned.length > 1; // never sell your last club
+      const ph = this.bag.usesLeftThisHole(club.id);
+      const tl = this.bag.usesLeftTotal(club.id);
+      let badge = '';
+      if (ph !== Infinity)      badge = `<span class="club-pill-uses">${ph}/${club.usesPerHole}</span>`;
+      else if (tl !== Infinity) badge = `<span class="club-pill-uses">${tl} left</span>`;
+
+      const pill = document.createElement('div');
+      pill.className = 'club-pill';
+      pill.style.setProperty('--club-color', club.color);
+      pill.innerHTML = `
+        <i class="club-pill-icon ${club.icon || 'fa-solid fa-club'}"></i>
+        <span class="club-pill-name">${club.name}</span>
+        ${badge}
+        <button class="club-pill-sell" type="button" ${canSell ? '' : 'disabled'}>${canSell ? `Sell $${sellValue}` : 'Last'}</button>
+      `;
+      const sellBtn = pill.querySelector('.club-pill-sell');
+      sellBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (sellBtn.disabled) return;
+        this._trySellClub(club.id);
+      });
+      list.appendChild(pill);
+    }
+  }
+
+  _refreshOffers() {
+    const cards = this.bodyEl.querySelectorAll('.item-card');
+    const itemBagFull = !this.run.hasFreeSlot;
+    const clubBagFull = !this.bag || !this.bag.hasFreeClubSlot;
+
+    for (const card of cards) {
+      const type = card.dataset.offerType;
+      const id = card.dataset.itemId || card.dataset.clubId;
+      let cost, key, full, sold;
+      if (type === 'item') {
+        const item = itemById(id);
+        if (!item) continue;
+        cost = this.run.effectiveCost(item.cost);
+        key = `item:${id}`;
+        full = itemBagFull;
+        sold = this.purchasedThisVisit.has(key);
+      } else {
+        const club = this.bag.shopClubs().find((c) => c.id === id);
+        if (!club && !this.bag.isOwned(id)) continue;
+        cost = this.run.effectiveCost(club ? club.cost : 0);
+        key = `club:${id}`;
+        full = clubBagFull;
+        sold = this.bag.isOwned(id) || this.purchasedThisVisit.has(key);
+      }
+
       const btn = card.querySelector('.item-buy');
-      const sold = this.purchasedThisVisit.has(id);
       const canAfford = this.run.cash >= cost;
 
       if (sold) {
@@ -318,7 +388,7 @@ export class Shop {
         btn.classList.add('sold');
         btn.classList.remove('cant-afford', 'bag-full');
         card.classList.add('sold');
-      } else if (bagFull) {
+      } else if (full) {
         btn.textContent = 'BAG FULL';
         btn.disabled = true;
         btn.classList.add('bag-full');
@@ -332,70 +402,12 @@ export class Shop {
         card.classList.remove('sold');
       }
     }
-  }
 
-  _refreshClubsTab() {
-    if (!this.clubsTabEl || !this.bag) return;
-
-    // Owned clubs list (small pills)
-    const ownedEl = this.clubsTabEl.querySelector('.owned-clubs');
-    if (ownedEl) {
-      ownedEl.innerHTML = '';
-      for (const club of this.bag.ownedClubs()) {
-        const pill = document.createElement('div');
-        pill.className = 'owned-club-pill';
-        pill.style.setProperty('--club-color', club.color);
-        let badge = '';
-        const ph = this.bag.usesLeftThisHole(club.id);
-        const tl = this.bag.usesLeftTotal(club.id);
-        if (ph !== Infinity)      badge = ` · ${ph}/${club.usesPerHole}`;
-        else if (tl !== Infinity) badge = ` · ${tl} left`;
-        pill.innerHTML = `<span class="oc-name">${club.name}${badge}</span>`;
-        ownedEl.appendChild(pill);
-      }
-    }
-
-    // Club offers — every NOT-yet-owned club, in canonical order
-    const offersEl = this.clubsTabEl.querySelector('.club-offers');
-    if (offersEl) {
-      offersEl.innerHTML = '';
-      const shopClubs = this.bag.shopClubs();
-      if (!shopClubs.length) {
-        const none = document.createElement('div');
-        none.className = 'held-empty';
-        none.textContent = 'You own every club. Nice.';
-        offersEl.appendChild(none);
-      }
-      for (const club of shopClubs) {
-        const cost = this.run.effectiveCost(club.cost);
-        const canAfford = this.run.cash >= cost;
-        const card = document.createElement('div');
-        card.className = 'club-card';
-        card.style.setProperty('--rarity-color', club.color);
-        if (club.special) card.classList.add('special');
-
-        // Limit badge text
-        let limit = '';
-        if (club.usesPerHole !== undefined) limit = `${club.usesPerHole}/hole`;
-        else if (club.usesTotal !== undefined) limit = `${club.usesTotal} uses then breaks`;
-
-        card.innerHTML = `
-          <div class="club-card-head">
-            <span class="club-card-short" style="background: ${club.color}">${club.short}</span>
-            <div class="club-card-titles">
-              <div class="club-card-name">${club.name}${club.special ? ' <span class="club-card-tag">SPECIAL</span>' : ''}</div>
-              <div class="club-card-desc">${club.desc || ''}</div>
-              ${limit ? `<div class="club-card-limit">${limit}</div>` : ''}
-            </div>
-            <button class="club-buy" type="button">$${cost}</button>
-          </div>
-        `;
-        const btn = card.querySelector('.club-buy');
-        btn.disabled = !canAfford;
-        btn.classList.toggle('cant-afford', !canAfford);
-        btn.addEventListener('click', () => this._tryBuyClub(club.id));
-        offersEl.appendChild(card);
-      }
+    const rerollBtn = this.bodyEl.querySelector('.reroll-btn');
+    if (rerollBtn) {
+      const canAffordReroll = this.run.cash >= REROLL_COST;
+      rerollBtn.disabled = !canAffordReroll;
+      rerollBtn.classList.toggle('cant-afford', !canAffordReroll);
     }
   }
 }

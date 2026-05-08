@@ -28,23 +28,6 @@ const RARITY_COLORS = {
 
 const TRIGGER_MS = 700;
 
-// Two-letter abbreviation per item id, for the tiny pill face.
-const SHORT_LABEL = {
-  'heavy-driver':       'HD',
-  'driver-specialist':  'DS',
-  'lucky-tee':          'LT',
-  'sandbagger':         'SB',
-  'lead-wedge':         'LW',
-  'trust-fund':         'TF',
-  'country-club-card':  'CC',
-  'compound-interest':  '$$',
-  'eagle-eye':          'EE',
-  'range-finder':       'RF',
-  'bouncy-ball':        'BB',
-  'fairway-finder':     'FF',
-  'hole-hustler':       'HH',
-};
-
 // Item ids whose effect is always passively in play once owned. These will
 // always render as "active" — no conditional check needed.
 const ALWAYS_ACTIVE = new Set([
@@ -157,7 +140,7 @@ export class ItemBar {
       slot.className = 'item-pill';
       slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
       slot.title = `${item.name} — ${item.desc}`;
-      slot.innerHTML = `<span class="pill-short">${SHORT_LABEL[id] || '?'}</span>`;
+      slot.innerHTML = `<i class="pill-icon ${item.icon || 'fa-solid fa-circle'}"></i>`;
       this.el.appendChild(slot);
       this._slotEls.push(slot);
     }

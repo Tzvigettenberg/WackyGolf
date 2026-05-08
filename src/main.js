@@ -19,6 +19,7 @@ import { PowerMeter } from './ui/PowerMeter.js';
 import { RotateControls } from './ui/RotateControls.js';
 import { Run } from './core/Run.js';
 import { templateForHole, holeMetaFromTemplate, HOLES, RUN_LENGTH, isBossHole, skipCashFor } from './content/holes.js';
+import { recordRun, formatScore } from './core/highscores.js';
 import { Collection } from './ui/Collection.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { PauseMenu } from './ui/PauseMenu.js';
@@ -123,21 +124,52 @@ function showScoreBanner(name, cash) {
   setTimeout(() => { banner.style.opacity = '0'; }, 1700);
 }
 
+/** Pull common run-over rendering into one helper so the bust + win paths
+ *  share score + highscore display logic. */
+function renderRunOver({ completed }) {
+  const result = recordRun({
+    totalScore: run.totalScore,
+    totalCash: run.cash,
+    holesPlayed: run.holesPlayed,
+    completed,
+  });
+
+  // Score pill (big number)
+  const scoreEl = document.getElementById('run-over-score');
+  scoreEl.textContent = run.holesPlayed > 0 ? formatScore(run.totalScore) : '—';
+  scoreEl.classList.remove('under', 'over', 'even');
+  if (run.holesPlayed > 0) {
+    if (run.totalScore < 0)      scoreEl.classList.add('under');
+    else if (run.totalScore > 0) scoreEl.classList.add('over');
+    else                          scoreEl.classList.add('even');
+  }
+
+  // NEW BEST badge if applicable
+  const newBestEl = document.getElementById('run-over-newbest');
+  newBestEl.classList.toggle('shown', !!result.newScoreBest && run.holesPlayed > 0);
+
+  // Best so far line
+  const bestEl = document.getElementById('run-over-best');
+  bestEl.textContent = result.current.bestScore !== null
+    ? `Best score: ${formatScore(result.current.bestScore)}    ·    Best cash: $${result.current.bestCash ?? 0}`
+    : 'No records yet';
+}
+
 function showRunOver() {
-  // Re-style the modal as a "RUN OVER" state.
   runOverEl.classList.remove('victory');
   runOverEl.querySelector('h1').textContent = 'RUN OVER';
-  runOverHolesEl.textContent = `Holes played: ${run.holeNumber - 1} / ${RUN_LENGTH}`;
+  runOverHolesEl.textContent = `Holes played: ${run.holesPlayed} / ${RUN_LENGTH}`;
   runOverCashEl.textContent = `Total cash: $${run.cash}`;
+  renderRunOver({ completed: false });
   runOverEl.classList.add('shown');
 }
 function showRunComplete() {
-  // Victory state — reuse the same modal with a different title/styling.
   swing.setEnabled(false);
   runOverEl.classList.add('victory');
   runOverEl.querySelector('h1').textContent = 'COURSE COMPLETE';
   runOverHolesEl.textContent = `All ${RUN_LENGTH} holes cleared`;
   runOverCashEl.textContent = `Final cash: $${run.cash}`;
+  renderRunOver({ completed: true });
   runOverEl.classList.add('shown');
 }
 function hideRunOver() {
@@ -299,19 +331,34 @@ const pauseMenu = new PauseMenu({
   },
   onQuit: () => {
     pauseMenu.hide();
+    // Tear down ALL run-state modals so the title screen comes up clean.
+    if (shop) shop.hide();
+    if (holePreview) holePreview.hide();
+    document.body.classList.remove('preview-active');
+    hideRunOver();
+    cashOut.hide();
     canResume = false;          // run is abandoned
     enterTitleScreen();         // back to the home view
   },
 });
 
-const pauseBtn = document.getElementById('pause-btn');
-pauseBtn.addEventListener('click', () => {
-  // Mid-run pause goes to the small PauseMenu, not the full title screen.
+/**
+ * Open the pause menu from anywhere — gameplay HUD, shop, or preview.
+ * The menu's Resume/Quit handlers clean up all the open modals.
+ */
+function openPauseMenu() {
   inGame = false;
   swing.setEnabled(false);
   savedYaw = followCamera.targetYaw;
   pauseMenu.show();
-});
+}
+
+const pauseBtn = document.getElementById('pause-btn');
+pauseBtn.addEventListener('click', openPauseMenu);
+
+// Same menu trigger from inside the shop and preview screens.
+document.querySelector('.shop-menu').addEventListener('click', openPauseMenu);
+document.querySelector('.preview-menu').addEventListener('click', openPauseMenu);
 
 function enterTitleScreen() {
   inGame = false;

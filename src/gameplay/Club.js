@@ -24,6 +24,7 @@ export const CLUBS = [
     launchAngle: deg(14),   // raised from 11° for a real arc, less rolling
     cost: 7,
     desc: 'Long. Tee-shot specialist.',
+    icon: 'fa-solid fa-rocket',
   },
   {
     id: 'iron',
@@ -35,6 +36,7 @@ export const CLUBS = [
     starter: true,          // free at run start
     cost: 0,
     desc: 'All-purpose mid-iron. The starter club.',
+    icon: 'fa-solid fa-arrow-trend-up',
   },
   {
     id: 'wedge',
@@ -45,6 +47,7 @@ export const CLUBS = [
     launchAngle: deg(52),   // high lob — short, stops fast
     cost: 7,
     desc: 'High lob. Short and stops fast on the green.',
+    icon: 'fa-solid fa-mountain',
   },
   {
     id: 'putter',
@@ -55,6 +58,7 @@ export const CLUBS = [
     launchAngle: deg(0),    // rolls flat
     cost: 5,
     desc: 'Low rolling stroke. Use on the green.',
+    icon: 'fa-solid fa-arrow-right-long',
   },
 
   // ---- special clubs ----
@@ -69,6 +73,7 @@ export const CLUBS = [
     usesPerHole: 1,
     desc: 'Massive range. 1 use per hole.',
     special: true,
+    icon: 'fa-solid fa-bomb',
   },
   {
     id: 'phoenix-iron',
@@ -81,6 +86,7 @@ export const CLUBS = [
     usesTotal: 5,           // breaks after 5 total uses across the run
     desc: 'Powerful 5-iron. Breaks after 5 swings.',
     special: true,
+    icon: 'fa-solid fa-fire',
   },
 ];
 
@@ -90,6 +96,14 @@ export function getClub(id) {
 
 export function starterClubIds() {
   return CLUBS.filter((c) => c.starter).map((c) => c.id);
+}
+
+/** Max clubs in the bag at once. Forces you to pick a kit, not hoard. */
+export const MAX_CLUBS = 4;
+
+/** Sell value when getting rid of a club — half of cost, min 1. */
+export function clubSellValue(club) {
+  return Math.max(1, Math.floor((club.cost || 0) / 2));
 }
 
 /**
@@ -131,13 +145,40 @@ export class Bag {
   /** All UNowned club objects, for the Shop's Clubs tab. */
   shopClubs()        { return CLUBS.filter((c) => !this.ownedIds.has(c.id) && c.cost !== undefined); }
 
+  /** Free club slots remaining. */
+  get clubSlotsLeft() { return Math.max(0, MAX_CLUBS - this.ownedIds.size); }
+  get hasFreeClubSlot() { return this.ownedIds.size < MAX_CLUBS; }
+
   unlock(id) {
     if (this.ownedIds.has(id)) return false;
     if (!CLUBS.some((c) => c.id === id)) return false;
+    if (!this.hasFreeClubSlot) return false;
     this.ownedIds.add(id);
     this._initUsesFor([id]);
     this._emit();
     return true;
+  }
+
+  /**
+   * Sell a club from the bag. Refuses if it would leave you clubless or if
+   * the id isn't owned. Returns the sold club's definition (so the caller
+   * can refund cash from it), or null on refusal.
+   */
+  sellClub(id) {
+    if (this.ownedIds.size <= 1) return null;
+    if (!this.ownedIds.has(id)) return null;
+    const club = getClub(id);
+    if (!club) return null;
+    this.ownedIds.delete(id);
+    this.usesPerHoleLeft.delete(id);
+    this.usesTotalLeft.delete(id);
+    if (this.activeId === id) {
+      const fallback = this.ownedClubs()[0];
+      this.activeId = fallback ? fallback.id : null;
+    }
+    if (this.lockedClubId === id) this.lockedClubId = null;
+    this._emit();
+    return club;
   }
 
   // ---- selection ----

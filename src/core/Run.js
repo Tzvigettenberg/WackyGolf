@@ -88,6 +88,10 @@ export class Run {
     // sold back from the shop independently.
     this.items = [];
     this.bagSlots = STARTING_BAG_SLOTS;
+    // Golf score: sum of (strokes - par) over holes that actually contributed
+    // — i.e., were holed-out or busted. Skipped holes don't count. Lower = better.
+    this.totalScore = 0;
+    this.holesPlayed = 0;
 
     this._listeners = [];
   }
@@ -183,6 +187,10 @@ export class Run {
     const cashBefore = this.cash;
     this.cash += total;
 
+    // Accumulate golf score (strokes - par; under is negative, over positive).
+    this.totalScore += result.overBy;
+    this.holesPlayed += 1;
+
     this.lastResult = {
       ...result,
       breakdown: {
@@ -208,6 +216,9 @@ export class Run {
     if (this.strokes >= this.holeMeta.strokeLimit) {
       this.status = 'busted';
       this.lastResult = null;
+      // Bust counts toward the score: strokeLimit - par for the failed hole.
+      this.totalScore += (this.holeMeta.strokeLimit - this.holeMeta.par);
+      this.holesPlayed += 1;
       this._emit();
       return true;
     }
@@ -248,6 +259,8 @@ export class Run {
     this.birdieStreak = 0;
     this.items = [];
     this.bagSlots = STARTING_BAG_SLOTS;
+    this.totalScore = 0;
+    this.holesPlayed = 0;
     this.startHole(meta);
   }
 
