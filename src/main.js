@@ -18,13 +18,14 @@ import { Minimap } from './ui/Minimap.js';
 import { PowerMeter } from './ui/PowerMeter.js';
 import { RotateControls } from './ui/RotateControls.js';
 import { Run } from './core/Run.js';
-import { templateForHole, holeMetaFromTemplate, HOLES } from './content/holes.js';
+import { templateForHole, holeMetaFromTemplate, HOLES, RUN_LENGTH, isBossHole, skipCashFor } from './content/holes.js';
 import { Collection } from './ui/Collection.js';
 import { TitleScreen } from './ui/TitleScreen.js';
 import { PauseMenu } from './ui/PauseMenu.js';
 import { CashOut } from './ui/CashOut.js';
 import { Shop } from './ui/Shop.js';
 import { ItemBar } from './ui/ItemBar.js';
+import { HolePreview } from './ui/HolePreview.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -106,7 +107,9 @@ function clearDistanceImmediate() {
 
 function updateHUD() {
   const name = (currentHole && currentHole.name) ? ` · ${currentHole.name.toUpperCase()}` : '';
-  holeEl.textContent = `HOLE ${run.holeNumber}${name} · PAR ${run.holeMeta.par}`;
+  const bossTag = isBossHole(run.holeNumber) ? ' · ⚑ BOSS' : '';
+  holeEl.textContent = `HOLE ${run.holeNumber}/${RUN_LENGTH}${name} · PAR ${run.holeMeta.par}${bossTag}`;
+  holeEl.classList.toggle('boss', isBossHole(run.holeNumber));
   strokesEl.textContent = `STROKE ${run.strokes}/${run.holeMeta.strokeLimit}`;
   strokesEl.classList.toggle('warning', run.strokesLeft === 2);
   strokesEl.classList.toggle('last-chance', run.strokesLeft === 1);
@@ -121,12 +124,24 @@ function showScoreBanner(name, cash) {
 }
 
 function showRunOver() {
-  runOverHolesEl.textContent = `Holes played: ${run.holeNumber - 1}`;
+  // Re-style the modal as a "RUN OVER" state.
+  runOverEl.classList.remove('victory');
+  runOverEl.querySelector('h1').textContent = 'RUN OVER';
+  runOverHolesEl.textContent = `Holes played: ${run.holeNumber - 1} / ${RUN_LENGTH}`;
   runOverCashEl.textContent = `Total cash: $${run.cash}`;
   runOverEl.classList.add('shown');
 }
+function showRunComplete() {
+  // Victory state — reuse the same modal with a different title/styling.
+  swing.setEnabled(false);
+  runOverEl.classList.add('victory');
+  runOverEl.querySelector('h1').textContent = 'COURSE COMPLETE';
+  runOverHolesEl.textContent = `All ${RUN_LENGTH} holes cleared`;
+  runOverCashEl.textContent = `Final cash: $${run.cash}`;
+  runOverEl.classList.add('shown');
+}
 function hideRunOver() {
-  runOverEl.classList.remove('shown');
+  runOverEl.classList.remove('shown', 'victory');
 }
 
 // Apply item-driven world effects: ball color/glow, bounce multiplier on
@@ -166,11 +181,9 @@ const cashOut = new CashOut({
   },
 });
 
-// ----- pro shop (Stats tab v1) -----
-const shop = new Shop({
-  run,
-  onContinue: () => advanceToNextHole(),
-});
+// Pro Shop + hole preview are constructed AFTER the bag is declared
+// (further down in the file) — moved down to avoid a TDZ ReferenceError
+// on `bag` in the Shop constructor.
 
 // ----- collection (hole library) -----
 const collection = new Collection({
@@ -262,9 +275,11 @@ const titleScreen = new TitleScreen({
   onPlay: () => {
     // Start a fresh run, regardless of any in-progress state
     clearDistanceImmediate();
-    run.resetRun(holeMetaFromTemplate(templateForHole(1)));
-    loadCurrentHole();
+    run.resetRun(holeMetaFromTemplate(templateForHole(1), 1));
+    bag.resetForNewRun();
     leaveTitleScreen();
+    // Show the preview for hole 1 — player picks Play or Skip from there.
+    showPreviewFor(1);
     canResume = true;
   },
   onResume: () => {
@@ -323,8 +338,84 @@ function leaveTitleScreen() {
 // enterTitleScreen() touches swing.setEnabled and const has a temporal dead zone.)
 
 // ----- bag, club selector, minimap, power meter, rotate buttons -----
-const bag = new Bag('driver');
+// Player starts with the 5-iron only; other clubs are unlocked from the
+// Pro Shop's Clubs tab.
+const bag = new Bag();
 const clubSelector = new ClubSelector(bag);
+
+// ----- pro shop (needs `bag`, so constructed here, not above with cashOut) -----
+const shop = new Shop({
+  run,
+  bag,
+  onContinue: () => advanceToNextHole(),
+});
+
+// ----- hole preview (shows between holes) -----
+const holePreview = new HolePreview();
+
+/**
+ * Show the round preview, with the targetHole highlighted as "current".
+ * Each round contains 3 holes (the third is always a boss). The other
+ * two cards are shown as context — already-resolved (done) for ones the
+ * player has passed, or upcoming for ones they haven't reached yet.
+ *
+ * If `targetHole > RUN_LENGTH`, the run is over and we show the victory
+ * screen instead.
+ */
+function showPreviewFor(targetHole) {
+  if (targetHole > RUN_LENGTH) {
+    showRunComplete();
+    return;
+  }
+
+  // Round = [start, start+1, start+2]. Round 1 = 1..3, Round 2 = 4..6, etc.
+  const round = Math.ceil(targetHole / 3);
+  const totalRounds = Math.ceil(RUN_LENGTH / 3);
+  const start = (round - 1) * 3 + 1;
+
+  const holes = [];
+  for (let n = start; n < start + 3 && n <= RUN_LENGTH; n++) {
+    const template = templateForHole(n);
+    const meta = holeMetaFromTemplate(template, n);
+    let status;
+    if (n < targetHole)        status = 'done';
+    else if (n === targetHole) status = 'current';
+    else                       status = 'upcoming';
+    holes.push({
+      holeNumber: n,
+      template,
+      meta,
+      status,
+      skipCash: skipCashFor(template, n),
+    });
+  }
+
+  // Hide gameplay HUD while the preview is up.
+  document.body.classList.add('preview-active');
+  swing.setEnabled(false);
+
+  const currentSkip = holes.find((h) => h.status === 'current').skipCash;
+
+  holePreview.show({
+    round,
+    totalRounds,
+    holes,
+    cash: run.cash,
+    bagItems: run.items.length,
+    bagSlots: run.bagSlots,
+    onPlay: () => {
+      holePreview.hide();
+      document.body.classList.remove('preview-active');
+      run.holeNumber = targetHole;
+      loadCurrentHole();
+    },
+    onSkip: () => {
+      holePreview.hide();
+      run.bankSkipCash(currentSkip);
+      showPreviewFor(targetHole + 1);
+    },
+  });
+}
 
 const minimap = new Minimap({
   teePos: currentHole.teePosition,
@@ -360,6 +451,14 @@ const swing = new SwingController({
     if (run.strokes === 0 && run.hasItem('lucky-tee')) itemBar.trigger('lucky-tee');
     if (club.id === 'driver' && run.hasItem('driver-specialist')) itemBar.trigger('driver-specialist');
     if (club.id === 'wedge' && run.hasItem('lead-wedge')) itemBar.trigger('lead-wedge');
+    // Boss handicap: ONE CLUB ONLY. The first swing of a boss hole locks the
+    // player into whichever club they used; the rest of the hole must use it.
+    if (run.holeMeta.isBoss && !bag.lockedClubId) {
+      bag.lockToActive();
+    }
+    // Special clubs decrement their use counters on every fire. If the active
+    // club hits 0 total uses it breaks and gets removed from the bag.
+    bag.consumeActiveUse();
     run.onShot();
     startDistanceCounter();
   },
@@ -398,6 +497,7 @@ swing.setSurfaces(currentHole.surfaces);
 // ----- hole loading -----
 function loadCurrentHole() {
   const template = templateForHole(run.holeNumber);
+  const meta = holeMetaFromTemplate(template, run.holeNumber);
 
   // tear down old geometry, build new
   disposeHole(scene, currentHole);
@@ -424,8 +524,10 @@ function loadCurrentHole() {
   followCamera.targetYaw = 0;
   followCamera.snap(physics.position);
 
-  // tell Run the par/limit for this hole
-  run.startHole(holeMetaFromTemplate(template));
+  // tell Run the par/limit for this hole (boss-aware leeway)
+  run.startHole(meta);
+  // refresh per-hole use counters on special clubs
+  bag.resetHoleUses();
   swing.setEnabled(true);
 
   // Trust Fund pays out at hole start — flash the pill so the player
@@ -437,15 +539,16 @@ function loadCurrentHole() {
 }
 
 // Seed the first hole's meta now that everything is constructed
-run.holeMeta = holeMetaFromTemplate(templateForHole(1));
+run.holeMeta = holeMetaFromTemplate(templateForHole(1), 1);
 updateHUD();
 
 // ----- holed-out + bust flow -----
 function advanceToNextHole() {
   clearDistanceImmediate();
-  // bump hole number first, then load that hole's geometry + meta
-  run.nextHole(holeMetaFromTemplate(templateForHole(run.holeNumber + 1)));
-  loadCurrentHole();
+  const next = run.holeNumber + 1;
+  // Show the preview for the next hole — player chooses Play or Skip.
+  // showPreviewFor handles run-complete if next > RUN_LENGTH.
+  showPreviewFor(next);
 }
 
 physics.onHoled = () => {
@@ -457,6 +560,10 @@ physics.onHoled = () => {
   // Compound Interest doubles the interest cap — pulse it when interest pays.
   if (run.hasItem('compound-interest') && result.breakdown.interest > 0) {
     itemBar.trigger('compound-interest');
+  }
+  // Hole Hustler pulses at hole-out when it actually paid out.
+  if (run.hasItem('hole-hustler') && result.breakdown.hustler > 0) {
+    itemBar.trigger('hole-hustler');
   }
   // Brief delay so the player gets the satisfaction of seeing the ball
   // drop into the cup before the cash-out overlay appears.
@@ -481,14 +588,21 @@ physics.onCameToRest = () => {
   }
   freezeAndFadeDistance();
 
-  // Sandbagger — +$3 every time the ball lands in a bunker, per copy owned.
-  if (run.hasItem('sandbagger') && currentHole.surfaces) {
+  // Surface-based bonus items: pay out when the ball comes to rest on a
+  // matching surface. Each is gated by ownership so non-owners get nothing.
+  if (currentHole.surfaces) {
     const surf = getSurfaceAt(currentHole.surfaces, physics.position.x, physics.position.z);
-    if (surf === 'sand') {
+    if (surf === 'sand' && run.hasItem('sandbagger')) {
       const bonus = 3 * run.itemCount('sandbagger');
       run.cash += bonus;
       showScoreBanner('SANDBAGGER!', bonus);
       itemBar.trigger('sandbagger');
+      run._emit();
+    } else if (surf === 'fairway' && run.hasItem('fairway-finder')) {
+      const bonus = 1 * run.itemCount('fairway-finder');
+      run.cash += bonus;
+      // No banner — this is a quiet, frequent payout. Pulse the pill instead.
+      itemBar.trigger('fairway-finder');
       run._emit();
     }
   }
@@ -524,8 +638,9 @@ function handleWaterPenalty() {
 playAgainBtn.addEventListener('click', () => {
   clearDistanceImmediate();
   hideRunOver();
-  run.resetRun(holeMetaFromTemplate(templateForHole(1)));
-  loadCurrentHole();
+  run.resetRun(holeMetaFromTemplate(templateForHole(1), 1));
+  bag.resetForNewRun();
+  showPreviewFor(1);
 });
 
 // ----- resize handling -----

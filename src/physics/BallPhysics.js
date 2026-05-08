@@ -324,6 +324,11 @@ export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier
   const samples = [];
 
   let firstContactIdx = -1;
+  // Exact ball position the moment it first touches the ground — used by the
+  // minimap red ring. The nearest sample can be up to SAMPLE_INTERVAL steps
+  // (~3 yd at full power) before actual contact, which makes the marker look
+  // like it's "lying" about where the ball lands.
+  let firstContactPos = null;
   let wasAirborne = p.y > BALL_RADIUS + 0.05;
 
   for (let i = 0; i < PREDICT_MAX_STEPS; i++) {
@@ -335,6 +340,7 @@ export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier
 
     if (firstContactIdx < 0 && wasAirborne && p.y <= BALL_RADIUS + 0.05) {
       firstContactIdx = Math.max(0, samples.length - 1);
+      firstContactPos = { x: p.x, y: p.y, z: p.z };
     }
     wasAirborne = p.y > BALL_RADIUS + 0.05;
 
@@ -347,6 +353,7 @@ export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier
         samples,
         rest,
         firstContactIdx: firstContactIdx < 0 ? samples.length - 1 : firstContactIdx,
+        firstContactPos: firstContactPos || rest,
       };
     }
   }
@@ -356,5 +363,6 @@ export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier
     samples,
     rest,
     firstContactIdx: firstContactIdx < 0 ? samples.length - 1 : firstContactIdx,
+    firstContactPos: firstContactPos || rest,
   };
 }

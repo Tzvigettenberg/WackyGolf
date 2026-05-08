@@ -158,11 +158,60 @@ export const HOLES = [
 ];
 
 /** Pick the template for a given hole number (1-indexed). Cycles. */
+/**
+ * Each round (3 holes) is played on the SAME hole template — the third
+ * play in the round is a tougher boss version of that same hole. So one
+ * full run = 3 distinct holes, each played 3 times with rising stakes.
+ */
 export function templateForHole(holeNumber) {
-  return HOLES[(holeNumber - 1) % HOLES.length];
+  const round = Math.ceil(holeNumber / 3);
+  return HOLES[(round - 1) % HOLES.length];
 }
 
-/** Stroke limit for a hole — par + 4 in this iteration. */
-export function holeMetaFromTemplate(template) {
-  return { par: template.par, strokeLimit: template.par + 4 };
+/** A run is 9 holes. After holing #9 the player wins the run. */
+export const RUN_LENGTH = 9;
+
+/** Boss holes: stricter stroke limit + double payout multiplier. */
+export const BOSS_HOLES = new Set([3, 6, 9]);
+
+export function isBossHole(holeNumber) {
+  return BOSS_HOLES.has(holeNumber);
+}
+
+/**
+ * Cash payout for skipping a hole. Tuned to land between "par credit" and
+ * "birdie" — tempting safety net, but skipping every hole leaves you poorer
+ * than playing well. Boss holes can't be skipped.
+ */
+export function skipCashFor(template, holeNumber) {
+  if (isBossHole(holeNumber)) return 0;
+  return template.par + 2;
+}
+
+/**
+ * Plain-English summary of the hazards on a hole, for the preview screen.
+ *   { water, bunkers, dogleg, distance, par }
+ */
+export function holeFeatures(template) {
+  const water = template.water && template.water.length ? template.water.length : 0;
+  const bunkers = template.bunkers && template.bunkers.length ? template.bunkers.length : 0;
+  const dogleg = template.fairway && template.fairway.length > 1;
+  const dx = template.cupPosition.x - template.teePosition.x;
+  const dz = template.cupPosition.z - template.teePosition.z;
+  const distance = Math.round(Math.hypot(dx, dz));
+  return { water, bunkers, dogleg, distance, par: template.par };
+}
+
+/**
+ * Stroke limit for a hole. Boss holes get par+2 (tight); normal holes get
+ * par+4. Hole-number-aware so the host can pass it in directly.
+ */
+export function holeMetaFromTemplate(template, holeNumber = 1) {
+  const leeway = isBossHole(holeNumber) ? 2 : 4;
+  return {
+    par: template.par,
+    strokeLimit: template.par + leeway,
+    isBoss: isBossHole(holeNumber),
+    holeNumber,
+  };
 }

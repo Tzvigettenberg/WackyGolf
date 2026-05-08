@@ -41,6 +41,9 @@ export class CashOut {
     this.streakLine = this.modal.querySelector('.line-streak');
     this.streakValEl = this.modal.querySelector('.line-streak .cash');
     this.streakCountEl = this.modal.querySelector('.line-streak .count');
+    this.hustlerLine = this.modal.querySelector('.line-hustler');
+    this.hustlerValEl = this.modal.querySelector('.line-hustler .cash');
+    this.hustlerCountEl = this.modal.querySelector('.line-hustler .count');
     this.interestLine = this.modal.querySelector('.line-interest');
     this.interestValEl = this.modal.querySelector('.line-interest .cash');
 
@@ -69,6 +72,7 @@ export class CashOut {
     this.underValEl.textContent  = '+$0';
     this.leewayValEl.textContent = '+$0';
     this.streakValEl.textContent = '+$0';
+    this.hustlerValEl.textContent = '+$0';
     this.interestValEl.textContent = '+$0';
     this.totalEl.textContent     = '+$0';
     this.cashFromEl.textContent  = `$${cashBefore}`;
@@ -79,15 +83,18 @@ export class CashOut {
     const showUnder   = breakdown.underPar > 0;
     const showLeeway  = breakdown.leeway > 0;
     const showStreak  = breakdown.streak > 0;
+    const showHustler = (breakdown.hustler || 0) > 0;
     const showInterest = breakdown.interest > 0;
     this.parLine.style.display    = showPar ? '' : 'none';
     this.underLine.style.display  = showUnder ? '' : 'none';
     this.leewayLine.style.display = showLeeway ? '' : 'none';
     this.streakLine.style.display = showStreak ? '' : 'none';
+    this.hustlerLine.style.display = showHustler ? '' : 'none';
     this.interestLine.style.display = showInterest ? '' : 'none';
     if (showUnder)  this.underCountEl.textContent  = `(×${score.underParCircles})`;
     if (showLeeway) this.leewayCountEl.textContent = `(×${score.leewaySaved})`;
     if (showStreak) this.streakCountEl.textContent = `×${streakCount}`;
+    if (showHustler) this.hustlerCountEl.textContent = `(×${score.underParCircles})`;
 
     this.btn.disabled = true;
     this.btn.classList.remove('ready');
@@ -121,6 +128,11 @@ export class CashOut {
     // streak
     if (showStreak) {
       this._countUp(this.streakValEl, 0, breakdown.streak, delay);
+      delay += STAGGER_MS;
+    }
+    // hole hustler
+    if (showHustler) {
+      this._countUp(this.hustlerValEl, 0, breakdown.hustler, delay);
       delay += STAGGER_MS;
     }
     // interest

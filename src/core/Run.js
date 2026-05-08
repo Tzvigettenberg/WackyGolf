@@ -4,7 +4,7 @@
 // strokes used on the current hole, cash, status. The host (main.js)
 // drives this with shot-fired / holed / came-to-rest events.
 
-const STARTING_CASH = 3;
+const STARTING_CASH = 5;
 const DEFAULT_PAR = 4;
 const DEFAULT_LEEWAY = 4;   // stroke limit = par + leeway
 
@@ -25,9 +25,9 @@ export const REROLL_COST = 3;
  *   leewayCash   — $0 in v1 (kept in the data shape for the cash-out visual,
  *                  may return as a difficulty modifier later)
  */
-const PER_BALL_UNDER = [3, 5, 8, 12, 18]; // 1st, 2nd, 3rd, ... under par
+const PER_BALL_UNDER = [4, 6, 9, 13, 18]; // 1st, 2nd, 3rd, ... under par
 const PER_LEEWAY = 0;
-const PAR_CREDIT = 0;
+const PAR_CREDIT = 1;     // small token for finishing — survival pays a buck
 const BOGEY_CREDIT = 0;
 
 export function computeScore(strokes, par, strokeLimit) {
@@ -78,7 +78,7 @@ export class Run {
     this.holeNumber = 1;
     this.strokes = 0;
     this.holeMeta = { par: DEFAULT_PAR, strokeLimit: DEFAULT_PAR + DEFAULT_LEEWAY };
-    this.status = 'playing'; // 'playing' | 'holed' | 'busted'
+    this.status = 'playing'; // 'playing' | 'holed' | 'busted' | 'completed'
     this.lastResult = null;
     // Consecutive birdies/eagles/aces. Resets on bogey or worse. Drives the
     // streak bonus shown on the cash-out screen.
@@ -154,19 +154,32 @@ export class Run {
 
     const result = computeScore(this.strokes, this.holeMeta.par, this.holeMeta.strokeLimit);
 
+    // Boss holes (3, 6, 9) pay double on the score-based portion.
+    const bossMult = this.holeMeta.isBoss ? 2 : 1;
+    if (bossMult !== 1) {
+      result.parCredit   *= bossMult;
+      result.underParCash *= bossMult;
+      result.leewayCash  *= bossMult;
+      result.cash         = result.parCredit + result.underParCash + result.leewayCash;
+    }
+
     // streak: +$1 per consecutive birdie/eagle/ace, resets on par-or-worse
     const isBirdieOrBetter = result.kind === 'birdie' || result.kind === 'eagle' || result.kind === 'ace';
     if (isBirdieOrBetter) this.birdieStreak += 1;
     else                  this.birdieStreak = 0;
     const streakCash = isBirdieOrBetter ? this.birdieStreak * 1 : 0;
 
+    // Hole Hustler — +$1 per under-par stroke (per copy). Quiet, additive
+    // synergy with under-par builds.
+    const hustlerCash = result.underParCircles * this.itemCount('hole-hustler');
+
     // interest: $1 per $5 on the post-payout balance, capped at $2
     // (or $4 with the Compound Interest item)
     const interestCap = this.hasItem('compound-interest') ? 4 : 2;
-    const provisional = this.cash + result.cash + streakCash;
+    const provisional = this.cash + result.cash + streakCash + hustlerCash;
     const interestCash = Math.min(interestCap, Math.floor(provisional / 5));
 
-    const total = result.cash + streakCash + interestCash;
+    const total = result.cash + streakCash + interestCash + hustlerCash;
     const cashBefore = this.cash;
     this.cash += total;
 
@@ -177,6 +190,7 @@ export class Run {
         underPar: result.underParCash,
         leeway: result.leewayCash,
         streak: streakCash,
+        hustler: hustlerCash,
         interest: interestCash,
         total,
       },
@@ -215,6 +229,16 @@ export class Run {
   nextHole(meta) {
     this.holeNumber += 1;
     this.startHole(meta);
+  }
+
+  /**
+   * Bank skip-bonus cash. Does NOT advance holeNumber — the host (preview
+   * UI) tracks the target hole separately and only commits run.holeNumber
+   * when the player actually presses Play.
+   */
+  bankSkipCash(cashGained) {
+    this.cash += cashGained;
+    this._emit();
   }
 
   /** Start a fresh run. Pass meta from the first template. */

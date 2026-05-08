@@ -229,11 +229,12 @@ export class SwingController {
     const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
-    // Use the FIRST ground-contact sample as the target — bounces and roll
-    // aren't shown on the minimap so the player has to estimate them. Adds skill.
-    // (Eagle Eye flips this — minimap will show the full path AND the rest point.)
+    // Use the EXACT first ground-contact position — bounces and roll aren't
+    // shown on the minimap so the player has to estimate them. The exact
+    // contact point (not the nearest sample) is what makes the marker honest.
+    // Eagle Eye swaps this for the final rest position.
     const eagleEye = this.getShowFullTrajectory();
-    const firstLanding = traj.samples[traj.firstContactIdx] || traj.rest;
+    const firstLanding = traj.firstContactPos || traj.rest;
     const target = eagleEye ? traj.rest : firstLanding;
 
     this._predictedRest = target;

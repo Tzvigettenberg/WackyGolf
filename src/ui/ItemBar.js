@@ -41,6 +41,8 @@ const SHORT_LABEL = {
   'eagle-eye':          'EE',
   'range-finder':       'RF',
   'bouncy-ball':        'BB',
+  'fairway-finder':     'FF',
+  'hole-hustler':       'HH',
 };
 
 // Item ids whose effect is always passively in play once owned. These will
@@ -51,8 +53,10 @@ const ALWAYS_ACTIVE = new Set([
   'compound-interest',
   'range-finder',
   'bouncy-ball',
-  'trust-fund',  // pays at hole start regardless of conditions
-  'sandbagger',  // pays whenever ball lands in sand regardless
+  'trust-fund',     // pays at hole start regardless of conditions
+  'sandbagger',     // pays whenever ball lands in sand regardless
+  'fairway-finder', // pays whenever ball rests on fairway
+  'hole-hustler',   // pays at hole-out
 ]);
 
 export class ItemBar {
