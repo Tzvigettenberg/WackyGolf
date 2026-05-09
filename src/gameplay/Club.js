@@ -80,8 +80,8 @@ export const CLUBS = [
     maxSpeed: 58,
     launchAngle: deg(22),
     cost: 12,
-    usesTotal: 5,
-    desc: 'Powerful 5-iron. Breaks after 5 swings.',
+    usesPerHole: 2,
+    desc: 'Powerful 5-iron. 2 uses per hole.',
     icon: 'icon-club',
   },
   {

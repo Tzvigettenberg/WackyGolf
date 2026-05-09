@@ -333,6 +333,18 @@
     }
     #wind-indicator.calm { opacity: 0.4; }
     #wind-indicator.blocked { opacity: 0; }
+    #wind-indicator.rotatable {
+      cursor: pointer;
+    }
+    #wind-indicator.rotatable #wind-icon {
+      border-color: #ffd86b;
+      box-shadow: 0 0 12px rgba(255, 216, 107, 0.55);
+      animation: wind-rotatable-pulse 1.6s ease-in-out infinite;
+    }
+    @keyframes wind-rotatable-pulse {
+      0%, 100% { box-shadow: 0 0 8px rgba(255, 216, 107, 0.45); }
+      50%      { box-shadow: 0 0 18px rgba(255, 216, 107, 0.85); }
+    }
     #wind-icon {
       width: 38px; height: 38px;
       background: rgba(46, 125, 50, 0.55);
@@ -1369,6 +1381,32 @@
       transition: opacity 0.18s ease;
       z-index: 3;
     }
+    /* Spin banner — flashes briefly when a mid-air swipe registers spin.
+       Sits centered upper-third of the screen so it doesn't hide the
+       ball or compete with the score banner. */
+    #spin-banner {
+      position: fixed;
+      top: 28%;
+      left: 50%;
+      transform: translateX(-50%);
+      pointer-events: none;
+      padding: 8px 18px;
+      background: rgba(0, 0, 0, 0.55);
+      border: 1.5px solid rgba(255, 255, 255, 0.6);
+      border-radius: 999px;
+      color: white;
+      font-size: 14px; font-weight: 900; letter-spacing: 2px;
+      text-transform: uppercase;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      transition: opacity 0.18s ease, transform 0.4s ease;
+      z-index: 50;
+    }
+    #spin-banner.shown {
+      opacity: 1;
+      transform: translate(-50%, -8px);
+    }
+
     #score-banner {
       position: fixed; inset: 0;
       display: flex; align-items: center; justify-content: center;
@@ -1450,8 +1488,13 @@
                    0 4px 14px rgba(0, 0, 0, 0.6);
     }
     #run-over .stats { display: flex; flex-direction: column; gap: 4px; align-items: center; font-size: 16px; opacity: 0.9; }
-    #run-over .play-again {
+    #run-over .ro-buttons {
+      display: flex; flex-direction: column; gap: 8px;
       margin-top: 12px;
+      align-items: stretch;
+      min-width: 220px;
+    }
+    #run-over .play-again {
       padding: 14px 28px;
       font-size: 16px; font-weight: 800;
       background: white;
@@ -1460,6 +1503,19 @@
       cursor: pointer;
       font-family: inherit;
     }
+    #run-over .play-again:active { transform: scale(0.97); }
+    #run-over .ro-quit {
+      padding: 12px 22px;
+      font-size: 13px; font-weight: 800; letter-spacing: 1px;
+      background: rgba(255, 255, 255, 0.10);
+      color: white;
+      border: 1.5px solid rgba(255, 255, 255, 0.30);
+      border-radius: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+    }
+    #run-over .ro-quit:active { transform: scale(0.97); }
 
     /* Collection modal */
     #collection-modal {
@@ -2173,6 +2229,7 @@
   </div>
   <div id="hud-bottom">Pick a club · drag back · release to swing · sink it</div>
   <div id="shot-distance">0 YD</div>
+  <div id="spin-banner"></div>
   <div id="wind-indicator" aria-label="Wind">
     <div id="wind-icon"><div id="wind-arrow"></div></div>
     <div id="wind-speed">0</div>
@@ -2193,7 +2250,10 @@
       <div id="run-over-cash">Total cash: $0</div>
       <div id="run-over-best">Best: —</div>
     </div>
-    <button class="play-again" id="play-again-btn" type="button">Play Again</button>
+    <div class="ro-buttons">
+      <button class="play-again" id="play-again-btn" type="button">Play Again</button>
+      <button class="ro-quit" id="run-over-quit-btn" type="button">Main Menu</button>
+    </div>
   </div>
   <div id="shop" role="dialog" aria-modal="true" aria-label="Pro Shop">
     <div class="shop-card">

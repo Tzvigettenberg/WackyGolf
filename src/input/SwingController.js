@@ -268,12 +268,13 @@ export class SwingController {
     const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult, windForce, surfaceMap);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
-    // Always show the FIRST ground-contact position in the red marker —
-    // honest about where the ball will physically touch down regardless
-    // of items, multipliers, or bounce profile. Eagle Eye still earns its
-    // keep by extending the dotted minimap line through bounces + roll.
+    // Show the FINAL REST position so the marker is honest about where
+    // the ball actually ends up, including roll-off into hazards (the
+    // common island-hole footgun: ball lands on green, then rolls into
+    // water). Predictor + live physics share the same constants, so
+    // this matches the actual outcome modulo float drift.
     const eagleEye = this.getShowFullTrajectory();
-    const target = traj.firstContactPos || traj.rest;
+    const target = traj.rest;
 
     this._predictedRest = target;
     this.landingMarker.visible = true;

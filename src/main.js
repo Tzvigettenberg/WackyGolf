@@ -14,6 +14,7 @@ import { FollowCamera } from './scene/FollowCamera.js';
 import { WindFx } from './scene/WindFx.js';
 import { BallPhysics, BALL_RADIUS, getSurfaceAt } from './physics/BallPhysics.js';
 import { SwingController } from './input/SwingController.js';
+import { SpinController } from './input/SpinController.js';
 import { Bag } from './gameplay/Club.js';
 import { Wind } from './gameplay/Wind.js';
 import { ClubSelector } from './ui/ClubSelector.js';
@@ -641,6 +642,23 @@ function updateWindUI(multiplier = 1) {
   windSpeedEl.textContent = effSpeed < 0.05 ? '0' : effSpeed.toFixed(1);
   windIndicatorEl.classList.toggle('blocked', multiplier === 0);
   windIndicatorEl.classList.toggle('calm', effSpeed < 0.5 && multiplier !== 0);
+  // Weather Vane: indicator becomes tappable when the player owns the item
+  // AND hasn't used the rotate this hole. Visual highlight via a class.
+  const canRotate = run.hasItem('weather-vane') && !run.weatherVaneUsed && run.isPlayable;
+  windIndicatorEl.classList.toggle('rotatable', canRotate);
+  windIndicatorEl.style.pointerEvents = canRotate ? 'auto' : 'none';
+}
+
+// Weather Vane click handler — rotate wind 90° clockwise once per hole.
+if (windIndicatorEl) {
+  windIndicatorEl.addEventListener('click', () => {
+    if (!run.hasItem('weather-vane') || run.weatherVaneUsed || !run.isPlayable) return;
+    run.weatherVaneUsed = true;
+    wind.setAngle(wind.angle + Math.PI / 2);
+    applyWindToWorld();
+    sfx.uiClick();
+    itemBar.trigger('weather-vane', 'rotated');
+  });
 }
 
 // ----- swing controller -----
@@ -715,6 +733,31 @@ const swing = new SwingController({
 });
 swing.setSurfaces(currentHole.surfaces);
 
+// Mid-air swipe → spin. Coexists with SwingController because swing only
+// fires when the ball is at rest and spin only fires when it's airborne.
+const spinBannerEl = document.getElementById('spin-banner');
+let _spinBannerTimer = null;
+function flashSpinBanner(spin) {
+  if (!spinBannerEl) return;
+  const labels = { back: '↺ BACKSPIN', top: '↻ TOPSPIN', hook: '⤺ HOOK', slice: '⤻ SLICE' };
+  spinBannerEl.textContent = labels[spin] || spin.toUpperCase();
+  spinBannerEl.classList.add('shown');
+  if (_spinBannerTimer) clearTimeout(_spinBannerTimer);
+  _spinBannerTimer = setTimeout(() => {
+    spinBannerEl.classList.remove('shown');
+    _spinBannerTimer = null;
+  }, 900);
+}
+// eslint-disable-next-line no-unused-vars
+const spinCtl = new SpinController({
+  ball: physics,
+  canvas: renderer.domElement,
+  onSpin: (spin) => {
+    flashSpinBanner(spin);
+    sfx.swing(0.35);
+  },
+});
+
 // ----- hole loading -----
 function loadCurrentHole({ restoring = false } = {}) {
   const template = templateForHole(run.holeNumber);
@@ -744,11 +787,12 @@ function loadCurrentHole({ restoring = false } = {}) {
     bounds: currentHole.bounds,
   });
 
-  // snap visuals — face the camera straight at the cup from the tee so
-  // doglegs and curved holes start oriented toward the line of play.
+  // snap visuals — tee shot starts looking straight down the fairway
+  // (yaw 0). Auto-facing the cup from the tee felt off on doglegs because
+  // it pointed the camera at the pin rather than at the line of play.
+  // Auto-face on rest (post-shot) is unchanged — see physics.onCameToRest.
   ballMesh.position.copy(physics.position);
-  const _tee = currentHole.teePosition, _cup = currentHole.cupPosition;
-  followCamera.targetYaw = Math.atan2(_cup.x - _tee.x, _tee.z - _cup.z);
+  followCamera.targetYaw = 0;
   followCamera.snap(physics.position);
 
   // tell Run the par/limit for this hole (boss-aware leeway). On restore we
@@ -929,6 +973,19 @@ playAgainBtn.addEventListener('click', () => {
   bag.resetForNewRun();
   showPreviewFor(1);
 });
+
+// Quit-to-menu from the run-over screen — bails to the title without
+// auto-starting a new run. Player can hit Play later from the title.
+const runOverQuitBtn = document.getElementById('run-over-quit-btn');
+if (runOverQuitBtn) {
+  runOverQuitBtn.addEventListener('click', () => {
+    sfx.uiClick();
+    RunSave.clear();
+    canResume = false;
+    hideRunOver();
+    enterTitleScreen();
+  });
+}
 
 // ----- resize handling -----
 function handleResize() {

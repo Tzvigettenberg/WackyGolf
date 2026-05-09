@@ -132,6 +132,15 @@ export class BallPhysics {
     // Empty by default (vanilla physics).
     this.surfaceMap = {};
 
+    // Mid-air spin — host (SpinController) sets this while the ball is
+    // airborne. One spin per shot, cleared on launch.
+    //   'back'  → kills horizontal momentum on first ground contact
+    //   'top'   → boosts horizontal momentum on first ground contact
+    //   'hook'  → applies leftward perpendicular acceleration in flight
+    //   'slice' → applies rightward perpendicular acceleration in flight
+    this.spin = null;
+    this._spinAppliedOnContact = false;
+
     // callbacks the host wires up
     this.onHoled = null;
     this.onCameToRest = null;
@@ -170,6 +179,10 @@ export class BallPhysics {
     this.isAtRest = false;
     this.isHoled = false;
     this.isInWater = false;
+    // Spin is per-shot — cleared on every launch so applying spin mid-air
+    // on shot N never bleeds into shot N+1.
+    this.spin = null;
+    this._spinAppliedOnContact = false;
   }
 
   step(dt) {
@@ -186,6 +199,23 @@ export class BallPhysics {
     if (this.position.y > BALL_RADIUS + 0.02) {
       this.velocity.x += this.windForce.x * dt;
       this.velocity.z += this.windForce.z * dt;
+
+      // Sidespin (hook/slice) — accelerate perpendicular to current
+      // horizontal direction. Hook = left, slice = right (relative to the
+      // ball's forward motion, NOT the camera, so a curving ball stays
+      // intuitive even after the player rotates the view post-shot).
+      if (this.spin === 'hook' || this.spin === 'slice') {
+        const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+        if (horizSpeed > 0.5) {
+          const sign = this.spin === 'slice' ? 1 : -1;
+          // perpendicular vector in XZ (rotated +90° from forward)
+          const perpX = -this.velocity.z / horizSpeed * sign;
+          const perpZ =  this.velocity.x / horizSpeed * sign;
+          const SIDESPIN_ACCEL = 14;
+          this.velocity.x += perpX * SIDESPIN_ACCEL * dt;
+          this.velocity.z += perpZ * SIDESPIN_ACCEL * dt;
+        }
+      }
     }
 
     // air drag — proportional to speed²
@@ -228,6 +258,20 @@ export class BallPhysics {
         this.velocity.y = -this.velocity.y * BOUNCE * mod.bounce * this.bounceMultiplier;
         this.velocity.x *= BOUNCE_FRICTION * mod.bounceFriction;
         this.velocity.z *= BOUNCE_FRICTION * mod.bounceFriction;
+        // Backspin / topspin land their effect on the FIRST bounce only —
+        // back kills outgoing horizontal speed (ball stops fast on greens),
+        // top boosts it (ball runs out further). Marked applied so we don't
+        // re-fire on later bounces.
+        if (!this._spinAppliedOnContact && (this.spin === 'back' || this.spin === 'top')) {
+          const k = this.spin === 'back' ? 0.30 : 1.45;
+          this.velocity.x *= k;
+          this.velocity.z *= k;
+          if (this.spin === 'top') {
+            // Topspin also flattens the bounce so the ball stays low and rolls.
+            this.velocity.y *= 0.45;
+          }
+          this._spinAppliedOnContact = true;
+        }
         if (this.onBounce) this.onBounce(Math.min(1, incomingDown / 30), surface);
       } else {
         // rolling — friction scaled by surface

@@ -45,6 +45,7 @@ const ALWAYS_ACTIVE = new Set([
   'all-terrain-ball',
   'wind-charm',
   'tailwind-talisman',
+  'weather-vane',
   'trust-fund',
   'sandbagger',
   'fairway-finder',

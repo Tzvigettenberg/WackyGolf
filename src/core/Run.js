@@ -94,6 +94,8 @@ export class Run {
     // — i.e., were holed-out or busted. Skipped holes don't count. Lower = better.
     this.totalScore = 0;
     this.holesPlayed = 0;
+    // Weather Vane: once-per-hole rotate. Reset on startHole().
+    this.weatherVaneUsed = false;
 
     this._listeners = [];
   }
@@ -262,6 +264,8 @@ export class Run {
     this.strokes = 0;
     this.status = 'playing';
     this.lastResult = null;
+    // Per-hole flags reset on every hole start.
+    this.weatherVaneUsed = false;
     if (applyPayouts && this.hasItem('trust-fund')) {
       this.cash += 2 * this.itemCount('trust-fund');
     }

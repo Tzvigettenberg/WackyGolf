@@ -116,8 +116,8 @@ export const ITEMS = [
     id: 'wind-charm',
     name: 'Wind Charm',
     desc: 'Wind has no effect on your shots.',
-    cost: 12,
-    rarity: 'uncommon',
+    cost: 18,
+    rarity: 'rare',
     icon: 'icon-gem',
   },
   {
@@ -126,6 +126,14 @@ export const ITEMS = [
     desc: 'Each hole, wind blows from your tee toward the cup.',
     cost: 18,
     rarity: 'rare',
+    icon: 'icon-gem',
+  },
+  {
+    id: 'weather-vane',
+    name: 'Weather Vane',
+    desc: 'Tap the wind meter once per hole to rotate wind 90° clockwise.',
+    cost: 14,
+    rarity: 'uncommon',
     icon: 'icon-gem',
   },
 
