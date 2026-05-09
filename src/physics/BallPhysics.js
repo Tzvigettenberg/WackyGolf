@@ -126,6 +126,12 @@ export class BallPhysics {
     // ONLY while the ball is airborne; rolling balls aren't affected.
     this.windForce = { x: 0, z: 0 };
 
+    // Surface remap — used by ball items that change how a surface plays.
+    // Floaty Ball maps water → fairway (no splash penalty).
+    // All-Terrain Ball maps rough → fairway (no friction penalty).
+    // Empty by default (vanilla physics).
+    this.surfaceMap = {};
+
     // callbacks the host wires up
     this.onHoled = null;
     this.onCameToRest = null;
@@ -199,7 +205,9 @@ export class BallPhysics {
     if (this.position.y <= BALL_RADIUS) {
       this.position.y = BALL_RADIUS;
 
-      const surface = getSurfaceAt(this.surfaces, this.position.x, this.position.z);
+      let surface = getSurfaceAt(this.surfaces, this.position.x, this.position.z);
+      // Item-driven surface remap (Floaty / All-Terrain balls).
+      if (this.surfaceMap[surface]) surface = this.surfaceMap[surface];
 
       // Water: ball splashes, stops dead. Host detects isInWater on rest and
       // applies a +1 penalty + ball replay.
@@ -274,7 +282,7 @@ const SAMPLE_INTERVAL = 3;            // emit a trajectory sample every N steps 
 const MAX_SAMPLES = 60;               // hard cap on trajectory points returned
 
 /** One physics sub-step. Mutates the {p, v} pair. Returns true once at rest. */
-function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }) {
+function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}) {
   v.y += GRAVITY * PREDICT_DT;
 
   // Wind — same airborne-only gate as the live physics step.
@@ -297,7 +305,8 @@ function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 
 
   if (p.y <= BALL_RADIUS) {
     p.y = BALL_RADIUS;
-    const surface = getSurfaceAt(surfaces, p.x, p.z);
+    let surface = getSurfaceAt(surfaces, p.x, p.z);
+    if (surfaceMap[surface]) surface = surfaceMap[surface];
 
     // Water in the predictor too — ball stops here so the cyan ring lands at the splash spot.
     if (surface === 'water') {
@@ -329,11 +338,11 @@ function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 
  * Forward-simulate to final rest. Returns { x, y, z } of resting position.
  * Used by the cyan ground ring + minimap target circle.
  */
-export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }) {
+export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   for (let i = 0; i < PREDICT_MAX_STEPS; i++) {
-    if (_step(p, v, surfaces, bounceMultiplier, windForce)) return { x: p.x, y: p.y, z: p.z };
+    if (_step(p, v, surfaces, bounceMultiplier, windForce, surfaceMap)) return { x: p.x, y: p.y, z: p.z };
   }
   return { x: p.x, y: p.y, z: p.z };
 }
@@ -349,7 +358,7 @@ export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0
  *                     3D orb display to the airborne arc only — the part
  *                     of the prediction that's most informative to the player.
  */
-export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }) {
+export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   const samples = [];
@@ -367,7 +376,7 @@ export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier
       samples.push({ x: p.x, y: p.y, z: p.z });
     }
 
-    const atRest = _step(p, v, surfaces, bounceMultiplier, windForce);
+    const atRest = _step(p, v, surfaces, bounceMultiplier, windForce, surfaceMap);
 
     if (firstContactIdx < 0 && wasAirborne && p.y <= BALL_RADIUS + 0.05) {
       firstContactIdx = Math.max(0, samples.length - 1);

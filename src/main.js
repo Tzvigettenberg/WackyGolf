@@ -33,6 +33,7 @@ import { Shop } from './ui/Shop.js';
 import { ItemBar } from './ui/ItemBar.js';
 import { HolePreview } from './ui/HolePreview.js';
 import { Confetti } from './ui/Confetti.js';
+import { Inventory } from './ui/Inventory.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -237,23 +238,42 @@ function applyItemEffects() {
     physics.bounceMultiplier = 1.65;
     trail.setColor(0xff7a2a);
   } else if (run.ball === 'golden-ball') {
-    // Golden Ball — bright yellow ball + matching trail (visual flair only).
     ballMesh.material.color.setHex(0xffd86b);
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x332200);
     physics.bounceMultiplier = 1.0;
     trail.setColor(0xffd86b);
   } else if (run.ball === 'heavy-ball') {
-    // Heavy Ball — steel-grey ball, lower bounce so it reads as denser.
     ballMesh.material.color.setHex(0x8c95a0);
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x000000);
     physics.bounceMultiplier = 0.85;
     trail.setColor(0xc0c8d2);
+  } else if (run.ball === 'floaty-ball') {
+    // Floaty Ball — sky-blue, lower density so it bounces a bit less hard
+    // (visual cue: it should feel like it's floating, not slamming).
+    ballMesh.material.color.setHex(0x6abadf);
+    if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x102233);
+    physics.bounceMultiplier = 0.95;
+    trail.setColor(0x6abadf);
+  } else if (run.ball === 'all-terrain-ball') {
+    // All-Terrain — forest-green tinted ball that reads "outdoorsy".
+    ballMesh.material.color.setHex(0x7cc26b);
+    if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x122810);
+    physics.bounceMultiplier = 1.0;
+    trail.setColor(0x7cc26b);
   } else {
     ballMesh.material.color.setHex(0xffffff);
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x000000);
     physics.bounceMultiplier = 1.0;
     trail.setColor(0xffffff);
   }
+
+  // Surface remap from ball items — Floaty turns water into fairway,
+  // All-Terrain turns rough into fairway. Predictor + live physics share
+  // this object so the trajectory marker is honest.
+  const surfaceMap = {};
+  if (run.ball === 'floaty-ball')      surfaceMap.water = 'fairway';
+  if (run.ball === 'all-terrain-ball') surfaceMap.rough = 'fairway';
+  physics.surfaceMap = surfaceMap;
 
   // Range Finder — distance rings on the minimap
   minimap.setRangeRings(run.hasItem('range-finder'));
@@ -500,6 +520,9 @@ const shop = new Shop({
 // ----- hole preview (shows between holes) -----
 const holePreview = new HolePreview();
 
+// Inventory modal — opened from the round preview's bag-count chip.
+const inventory = new Inventory({ run, bag });
+
 /**
  * Show the round preview, with the targetHole highlighted as "current".
  * Each round contains 3 holes (the third is always a boss). The other
@@ -550,6 +573,7 @@ function showPreviewFor(targetHole) {
     cash: run.cash,
     bagItems: run.items.length,
     bagSlots: run.bagSlots,
+    runScore: run.totalScore,
     onPlay: () => {
       sfx.uiClick();
       holePreview.hide();
@@ -562,6 +586,10 @@ function showPreviewFor(targetHole) {
       holePreview.hide();
       run.bankSkipCash(currentSkip);
       showPreviewFor(targetHole + 1);
+    },
+    onInventory: () => {
+      sfx.uiClick();
+      inventory.open();
     },
   });
 }
@@ -677,8 +705,6 @@ const swing = new SwingController({
     }
     if (club && club.id === 'wedge' && run.hasItem('lead-wedge')) mult *= 1.25;
     if (run.strokes === 0 && run.hasItem('lucky-tee')) mult *= 1.20;
-    // Boss handicap: STORMY drains 30% off every shot.
-    if (run.holeMeta.bossHandicap === 'stormy') mult *= 0.70;
     return mult;
   },
   // Eagle Eye reveals the full bounce + roll path on the minimap.
@@ -734,6 +760,8 @@ function loadCurrentHole({ restoring = false } = {}) {
 
   // Roll fresh wind for this hole, then let items dampen or override it.
   wind.rollForHole(run.holeNumber);
+  // Stormy boss handicap is now wind-themed: gusts hit twice as hard.
+  if (meta.bossHandicap === 'stormy') wind.speed *= 2.0;
   if (run.hasItem('tailwind-talisman')) {
     // Force a tailwind from tee toward cup so the player gets a helping push.
     const dx = currentHole.cupPosition.x - currentHole.teePosition.x;
@@ -813,6 +841,7 @@ physics.onHoled = () => {
       cashBefore: result.cashBefore,
       cashAfter: result.cashAfter,
       streakCount: result.streakCount,
+      runScore: run.totalScore,
     });
   }, 700);
 };
@@ -984,6 +1013,9 @@ function frame() {
     distEl.textContent = `${Math.round(Math.hypot(dx, dz))} YD`;
   }
 
+  // Freeze camera while the player is dragging back so aim doesn't drift
+  // mid-swing — the existing yaw/pos lerps would otherwise keep easing.
+  followCamera.frozen = swing.isAiming;
   followCamera.update(renderPos);
 
   // rotate buttons only visible when ball is at rest AND not mid-drag —

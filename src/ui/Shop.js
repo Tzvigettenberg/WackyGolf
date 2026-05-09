@@ -38,7 +38,13 @@ export class Shop {
     this.offers = [];
     // ids (per type prefix, e.g. 'item:heavy-driver') already bought THIS visit.
     this.purchasedThisVisit = new Set();
-    this.expandedSlot = -1;
+    // Per-section expand state. Each section tracks its own — only one row
+    // is open at a time within each section, but you can have one item +
+    // one club + one offer expanded simultaneously across sections.
+    this.expandedSlot = -1;       // bag slot index
+    this.expandedClubIdx = -1;    // owned club slot index
+    this.expandedBall = false;    // boolean — equipped ball expanded
+    this.expandedOfferKey = null; // string — 'item:id' or 'club:id'
 
     this.continueBtn.addEventListener('click', () => {
       sfx.uiClick();
@@ -62,6 +68,9 @@ export class Shop {
     this.offers = this._rollOffers(OFFERS_PER_VISIT);
     this.purchasedThisVisit = new Set();
     this.expandedSlot = -1;
+    this.expandedClubIdx = -1;
+    this.expandedBall = false;
+    this.expandedOfferKey = null;
     this._buildBody();
     this._refresh();
     this.modal.classList.add('shown');
@@ -145,29 +154,46 @@ export class Shop {
   _buildItemCard(id) {
     const item = itemById(id);
     if (!item) return null;
+    const key = `item:${id}`;
+    const expanded = this.expandedOfferKey === key;
     const card = document.createElement('div');
-    card.className = 'item-card';
+    card.className = 'shop-offer' + (expanded ? ' expanded' : '');
     card.dataset.itemId = id;
     card.dataset.offerType = 'item';
     card.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
+    // Default: compact row with icon + name + price button. Tap row →
+    // reveal rarity tag + description.
     card.innerHTML = `
-      <div class="card-icon"><i class="${item.icon || 'fa-solid fa-circle'}"></i></div>
-      <div class="card-body">
-        <div class="item-rarity">${item.rarity}</div>
-        <div class="item-name">${item.name}</div>
-        <div class="item-desc">${item.desc}</div>
+      <div class="shop-offer-head">
+        <div class="shop-offer-icon"><i class="${item.icon || 'fa-solid fa-circle'}"></i></div>
+        <div class="shop-offer-name">${item.name}</div>
+        <button class="shop-offer-buy" type="button">$0</button>
       </div>
-      <button class="item-buy" type="button">$0</button>
+      ${expanded ? `
+        <div class="shop-offer-detail">
+          <div class="shop-offer-rarity">${item.rarity}</div>
+          <div class="shop-offer-desc">${item.desc}</div>
+        </div>
+      ` : ''}
     `;
-    card.querySelector('.item-buy').addEventListener('click', () => this._tryBuyItem(id));
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.shop-offer-buy')) return;
+      this._toggleOffer(key);
+    });
+    card.querySelector('.shop-offer-buy').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._tryBuyItem(id);
+    });
     return card;
   }
 
   _buildClubCard(id) {
     const club = this.bag.shopClubs().find((c) => c.id === id);
     if (!club) return null;
+    const key = `club:${id}`;
+    const expanded = this.expandedOfferKey === key;
     const card = document.createElement('div');
-    card.className = 'item-card club-offer';
+    card.className = 'shop-offer club-offer' + (expanded ? ' expanded' : '');
     card.dataset.clubId = id;
     card.dataset.offerType = 'club';
     card.style.setProperty('--rarity-color', club.color);
@@ -177,17 +203,34 @@ export class Shop {
     else if (club.usesTotal !== undefined) limit = `${club.usesTotal} uses then breaks`;
 
     card.innerHTML = `
-      <div class="card-icon"><i class="${club.icon || 'fa-solid fa-club'}" style="color: ${club.color}"></i></div>
-      <div class="card-body">
-        <div class="item-rarity">${club.rarity || 'club'}</div>
-        <div class="item-name">${club.name}</div>
-        <div class="item-desc">${club.desc || ''}</div>
-        ${limit ? `<div class="club-card-limit">${limit}</div>` : ''}
+      <div class="shop-offer-head">
+        <div class="shop-offer-icon"><i class="${club.icon || 'fa-solid fa-club'}"></i></div>
+        <div class="shop-offer-name">${club.name}</div>
+        <button class="shop-offer-buy" type="button">$0</button>
       </div>
-      <button class="item-buy" type="button">$0</button>
+      ${expanded ? `
+        <div class="shop-offer-detail">
+          <div class="shop-offer-rarity">${club.rarity || 'club'}</div>
+          <div class="shop-offer-desc">${club.desc || ''}</div>
+          ${limit ? `<div class="shop-offer-limit">${limit}</div>` : ''}
+        </div>
+      ` : ''}
     `;
-    card.querySelector('.item-buy').addEventListener('click', () => this._tryBuyClub(id));
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.shop-offer-buy')) return;
+      this._toggleOffer(key);
+    });
+    card.querySelector('.shop-offer-buy').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this._tryBuyClub(id);
+    });
     return card;
+  }
+
+  _toggleOffer(key) {
+    this.expandedOfferKey = this.expandedOfferKey === key ? null : key;
+    this._buildOfferCards();
+    this._refresh();
   }
 
   // ----- buy / sell -----
@@ -216,7 +259,7 @@ export class Shop {
       return;
     }
     sfx.uiBuy();
-    this._punchCard(`.item-card[data-item-id="${id}"]`);
+    this._punchCard(`.shop-offer[data-item-id="${id}"]`);
     this._refresh();
   }
 
@@ -235,7 +278,7 @@ export class Shop {
     this.run.cash -= cost;
     this.run.equipBall(id);
     sfx.uiBuy();
-    this._punchCard(`.item-card[data-item-id="${id}"]`);
+    this._punchCard(`.shop-offer[data-item-id="${id}"]`);
     this._refresh();
   }
 
@@ -256,7 +299,7 @@ export class Shop {
       return;
     }
     sfx.uiBuy();
-    this._punchCard(`.item-card[data-club-id="${id}"]`);
+    this._punchCard(`.shop-offer[data-club-id="${id}"]`);
     this._refresh();
   }
 
@@ -338,7 +381,7 @@ export class Shop {
       if (status) status.textContent = 'empty';
       const empty = document.createElement('div');
       empty.className = 'held-empty';
-      empty.textContent = 'No ball equipped — find one in the shop!';
+      empty.textContent = 'No ball equipped — find one in the shop.';
       list.appendChild(empty);
       return;
     }
@@ -346,15 +389,27 @@ export class Shop {
     if (!item) return;
     if (status) status.textContent = 'equipped';
     const sellValue = this.run.sellValue(item.cost);
+    const expanded = this.expandedBall;
     const pill = document.createElement('div');
-    pill.className = 'club-pill';
-    pill.style.setProperty('--club-color', RARITY_COLORS[item.rarity] || '#fff');
+    pill.className = 'shop-pill ball-pill' + (expanded ? ' expanded' : '');
+    pill.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
     pill.innerHTML = `
-      <i class="club-pill-icon ${item.icon || 'fa-solid fa-circle'}"></i>
-      <span class="club-pill-name">${item.name}</span>
-      <button class="club-pill-sell" type="button">Sell $${sellValue}</button>
+      <div class="shop-pill-head">
+        <i class="shop-pill-icon ${item.icon || 'fa-solid fa-circle'}"></i>
+        <span class="shop-pill-name">${item.name}</span>
+      </div>
+      ${expanded ? `
+        <div class="shop-pill-desc">${item.desc}</div>
+        <button class="shop-pill-sell" type="button">Sell $${sellValue}</button>
+      ` : ''}
     `;
-    pill.querySelector('.club-pill-sell').addEventListener('click', (e) => {
+    pill.addEventListener('click', (e) => {
+      if (e.target.closest('.shop-pill-sell')) return;
+      this.expandedBall = !this.expandedBall;
+      this._refresh();
+    });
+    const sellBtn = pill.querySelector('.shop-pill-sell');
+    if (sellBtn) sellBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this._trySellBall();
     });
@@ -384,21 +439,24 @@ export class Shop {
       const expanded = this.expandedSlot === i;
       slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
       if (expanded) slot.classList.add('expanded');
+      // Compact default: icon + name only. Expand reveals desc + sell.
       slot.innerHTML = `
         <div class="slot-head">
           <i class="slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>
           <div class="slot-name">${item.name}</div>
-          <button class="slot-info" type="button" aria-label="Show description">i</button>
         </div>
-        ${expanded ? `<div class="slot-desc">${item.desc}</div>` : ''}
-        <button class="slot-sell" type="button">Sell $${sellValue}</button>
+        ${expanded ? `
+          <div class="slot-desc">${item.desc}</div>
+          <button class="slot-sell" type="button">Sell $${sellValue}</button>
+        ` : ''}
       `;
       const idx = i;
-      slot.querySelector('.slot-head').addEventListener('click', (e) => {
+      slot.addEventListener('click', (e) => {
         if (e.target.closest('.slot-sell')) return;
         this._toggleExpand(idx);
       });
-      slot.querySelector('.slot-sell').addEventListener('click', (e) => {
+      const sellBtn = slot.querySelector('.slot-sell');
+      if (sellBtn) sellBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._trySellItem(idx);
       });
@@ -419,24 +477,35 @@ export class Shop {
       const { index, club, usesLeftThisHole, usesLeftTotal } = slot;
       const sellValue = clubSellValue(club);
       const canSell = slots.length > 1;          // never sell your last club
+      const expanded = this.expandedClubIdx === index;
       let badge = '';
       if (usesLeftThisHole !== Infinity) {
-        badge = `<span class="club-pill-uses">${usesLeftThisHole}/${club.usesPerHole}</span>`;
+        badge = `<span class="shop-pill-tag">${usesLeftThisHole}/${club.usesPerHole}</span>`;
       } else if (usesLeftTotal !== Infinity) {
-        badge = `<span class="club-pill-uses">${usesLeftTotal} left</span>`;
+        badge = `<span class="shop-pill-tag">${usesLeftTotal} left</span>`;
       }
 
       const pill = document.createElement('div');
-      pill.className = 'club-pill';
-      pill.style.setProperty('--club-color', club.color);
+      pill.className = 'shop-pill club-pill' + (expanded ? ' expanded' : '');
+      pill.style.setProperty('--rarity-color', club.color);
       pill.innerHTML = `
-        <i class="club-pill-icon ${club.icon || 'fa-solid fa-club'}"></i>
-        <span class="club-pill-name">${club.name}</span>
-        ${badge}
-        <button class="club-pill-sell" type="button" ${canSell ? '' : 'disabled'}>${canSell ? `Sell $${sellValue}` : 'Last'}</button>
+        <div class="shop-pill-head">
+          <i class="shop-pill-icon ${club.icon || 'fa-solid fa-club'}"></i>
+          <span class="shop-pill-name">${club.name}</span>
+          ${badge}
+        </div>
+        ${expanded ? `
+          <div class="shop-pill-desc">${club.desc || ''}</div>
+          <button class="shop-pill-sell" type="button" ${canSell ? '' : 'disabled'}>${canSell ? `Sell $${sellValue}` : 'Last club — can\'t sell'}</button>
+        ` : ''}
       `;
-      const sellBtn = pill.querySelector('.club-pill-sell');
-      sellBtn.addEventListener('click', (e) => {
+      pill.addEventListener('click', (e) => {
+        if (e.target.closest('.shop-pill-sell')) return;
+        this.expandedClubIdx = this.expandedClubIdx === index ? -1 : index;
+        this._refresh();
+      });
+      const sellBtn = pill.querySelector('.shop-pill-sell');
+      if (sellBtn) sellBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (sellBtn.disabled) return;
         this._trySellClub(index);
@@ -446,7 +515,7 @@ export class Shop {
   }
 
   _refreshOffers() {
-    const cards = this.bodyEl.querySelectorAll('.item-card');
+    const cards = this.bodyEl.querySelectorAll('.shop-offer');
     const itemBagFull = !this.run.hasFreeSlot;
     const clubBagFull = !this.bag || !this.bag.hasFreeClubSlot;
 
@@ -481,7 +550,7 @@ export class Shop {
         sold = this.purchasedThisVisit.has(key);
       }
 
-      const btn = card.querySelector('.item-buy');
+      const btn = card.querySelector('.shop-offer-buy');
       const canAfford = this.run.cash >= cost;
 
       if (sold) {

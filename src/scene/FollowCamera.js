@@ -24,6 +24,10 @@ export class FollowCamera {
     this._lookAt  = new Vector3();
     this._rotated = new Vector3();
     this._initialized = false;
+    // Host sets this true while the player is mid-pull-back. While frozen
+    // we skip ALL easing (yaw + position) so the camera holds dead still
+    // and the swing aim doesn't drift.
+    this.frozen = false;
   }
 
   /** Set the rotation goal — actual yaw will ease toward it. */
@@ -50,6 +54,10 @@ export class FollowCamera {
       this.snap(ballPos);
       return;
     }
+    // Frozen: hold whatever camera state we last computed. The yaw/pos
+    // lerps stop completely, so a swing pull-back doesn't see the camera
+    // drift mid-aim.
+    if (this.frozen) return;
 
     // ease yaw toward target so rotation traces an arc
     const yawErr = this.targetYaw - this.yaw;

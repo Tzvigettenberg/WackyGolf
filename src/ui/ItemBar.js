@@ -41,6 +41,8 @@ const ALWAYS_ACTIVE = new Set([
   'bouncy-ball',
   'golden-ball',
   'heavy-ball',
+  'floaty-ball',
+  'all-terrain-ball',
   'wind-charm',
   'tailwind-talisman',
   'trust-fund',

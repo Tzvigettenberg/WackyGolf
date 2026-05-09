@@ -207,7 +207,7 @@ export function holeFeatures(template) {
  * "tighter strokes". Indexed by which boss it is (1st, 2nd, or 3rd).
  *   one-club  — first swing locks your club for the rest of the hole
  *   tiny-cup  — cup radius shrinks dramatically, putts must be precise
- *   stormy    — every shot loses 30% power, ranges feel cramped
+ *   stormy    — wind doubled — direction matters way more
  */
 const BOSS_HANDICAPS = ['one-club', 'tiny-cup', 'stormy'];
 
@@ -223,7 +223,7 @@ export function bossHandicapText(handicap) {
   switch (handicap) {
     case 'one-club': return 'ONE CLUB ONLY — first swing locks your club';
     case 'tiny-cup': return 'TINY CUP — cup is half-size';
-    case 'stormy':   return 'STORMY — every shot loses 30% power';
+    case 'stormy':   return 'STORMY — wind doubled';
     default:         return '';
   }
 }

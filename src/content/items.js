@@ -157,6 +157,24 @@ export const ITEMS = [
     icon: 'fa-solid fa-circle',
     slot: 'ball',
   },
+  {
+    id: 'floaty-ball',
+    name: 'Floaty Ball',
+    desc: 'Water no longer penalizes you. Ball plays where it lands.',
+    cost: 16,
+    rarity: 'rare',
+    icon: 'fa-solid fa-circle',
+    slot: 'ball',
+  },
+  {
+    id: 'all-terrain-ball',
+    name: 'All-Terrain Ball',
+    desc: 'Rough plays as fairway — no friction penalty.',
+    cost: 11,
+    rarity: 'uncommon',
+    icon: 'fa-solid fa-circle',
+    slot: 'ball',
+  },
 ];
 
 /** True if this item is an equipment item (e.g. ball slot). Trinket items

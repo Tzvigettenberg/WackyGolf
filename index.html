@@ -144,6 +144,120 @@
     }
     #stat-boss[hidden] { display: none; }
 
+    /* Inventory modal — opened from the round preview's bag-count chip.
+       Lists currently-owned items, equipped ball, and clubs in compact
+       rows. View-only (no buy/sell — that's the shop's job). */
+    #inventory-modal {
+      position: fixed; inset: 0;
+      display: none;
+      align-items: center; justify-content: center;
+      background: rgba(8, 28, 18, 0.85);
+      backdrop-filter: blur(6px);
+      z-index: 95;
+      font-family: inherit;
+      color: white;
+      padding: env(safe-area-inset-top, 16px) 12px env(safe-area-inset-bottom, 16px) 12px;
+    }
+    #inventory-modal.shown { display: flex; }
+    #inventory-modal .inv-card {
+      width: 100%; max-width: 380px; max-height: 100%;
+      background: linear-gradient(180deg, #2a4a36 0%, #1f3a2a 100%);
+      border: 1.5px solid rgba(255,255,255,0.15);
+      border-radius: 18px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.5);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    #inventory-modal .inv-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }
+    #inventory-modal .inv-title {
+      margin: 0;
+      font-size: 15px; letter-spacing: 1.5px; text-transform: uppercase;
+      font-weight: 800;
+    }
+    #inventory-modal .inv-close {
+      width: 32px; height: 32px;
+      background: rgba(255,255,255,0.10);
+      border: 1.5px solid rgba(255,255,255,0.25);
+      color: white;
+      border-radius: 8px;
+      font-size: 18px; font-weight: 800;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1;
+    }
+    #inventory-modal .inv-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px 14px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
+    #inventory-modal .inv-section-title {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 11px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      margin: 2px 2px 4px;
+    }
+    #inventory-modal .inv-count { color: #ffd86b; font-weight: 800; }
+    #inventory-modal .inv-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px solid var(--card-color, rgba(255,255,255,0.18));
+      border-radius: 8px;
+      margin-bottom: 4px;
+    }
+    #inventory-modal .inv-row.inv-empty {
+      border-style: dashed;
+      border-color: rgba(255,255,255,0.18);
+      opacity: 0.5;
+      justify-content: center;
+      gap: 6px;
+      padding: 6px 10px;
+    }
+    #inventory-modal .inv-empty-dot {
+      font-size: 14px; font-weight: 800; color: rgba(255,255,255,0.55);
+    }
+    #inventory-modal .inv-empty-label {
+      font-size: 11px; letter-spacing: 1px; text-transform: uppercase;
+    }
+    #inventory-modal .inv-icon {
+      width: 32px; height: 32px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.40);
+      border: 1.5px solid var(--card-color, rgba(255,255,255,0.25));
+      color: var(--card-color, white);
+      border-radius: 7px;
+      font-size: 13px;
+    }
+    #inventory-modal .inv-row-body { flex: 1; min-width: 0; }
+    #inventory-modal .inv-row-name {
+      font-size: 13px; font-weight: 800;
+      color: white;
+      line-height: 1.2;
+    }
+    #inventory-modal .inv-row-desc {
+      font-size: 11px;
+      opacity: 0.75;
+      line-height: 1.3;
+      margin-top: 2px;
+    }
+    #inventory-modal .inv-tag {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      background: rgba(0,0,0,0.4);
+      color: rgba(255,255,255,0.85);
+      font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+      border-radius: 4px;
+      vertical-align: middle;
+    }
+
     /* Confetti — fired on hole-in-one and course-complete. The container
        sits above every modal so the celebration paints on top of cash-out
        / shop / victory screens. pointer-events: none means it never
@@ -630,10 +744,11 @@
       background: rgba(255,255,255,0.06);
       border: 1.5px dashed rgba(255,255,255,0.18);
       border-radius: 8px;
-      min-height: 56px;
-      padding: 6px 8px;
+      min-height: 38px;
+      padding: 5px 7px;
       display: flex; flex-direction: column; align-items: stretch; justify-content: center;
       gap: 5px;
+      cursor: pointer;
       transition: background 0.15s ease, border-color 0.15s ease;
     }
     #shop .bag-slot.empty {
@@ -700,6 +815,167 @@
     }
     #shop .slot-sell:hover { background: rgba(255,107,107,0.25); border-color: rgba(255,107,107,0.6); }
     #shop .slot-sell:active { transform: scale(0.95); }
+
+    /* Compact tap-to-expand pills — shared style for owned items, ball,
+       and clubs in the shop. Default state: icon + name + optional tag.
+       Tap reveals a desc + sell button under the head. */
+    #shop .shop-pill {
+      display: flex; flex-direction: column;
+      gap: 6px;
+      padding: 6px 8px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.25));
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.12s ease;
+    }
+    #shop .shop-pill.expanded { background: rgba(255, 255, 255, 0.12); }
+    #shop .shop-pill-head {
+      display: flex; align-items: center; gap: 8px;
+      min-width: 0;
+    }
+    #shop .shop-pill-icon {
+      width: 26px; height: 26px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.4);
+      color: var(--rarity-color, white);
+      border: 1px solid var(--rarity-color, rgba(255,255,255,0.30));
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    #shop .shop-pill-name {
+      flex: 1; min-width: 0;
+      font-size: 12.5px; font-weight: 800;
+      color: var(--rarity-color, white);
+      letter-spacing: 0.4px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #shop .shop-pill-tag {
+      flex-shrink: 0;
+      padding: 1px 6px;
+      background: rgba(0, 0, 0, 0.4);
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+      border-radius: 4px;
+    }
+    #shop .shop-pill-desc {
+      font-size: 10.5px;
+      line-height: 1.35;
+      opacity: 0.85;
+      padding: 2px 2px 0;
+      border-top: 1px dashed rgba(255,255,255,0.18);
+    }
+    #shop .shop-pill-sell {
+      width: 100%;
+      padding: 6px 10px;
+      background: rgba(255,255,255,0.10);
+      color: white;
+      border: 1.5px solid rgba(255,255,255,0.25);
+      border-radius: 6px;
+      font-size: 10.5px; font-weight: 800; letter-spacing: 0.5px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+      transition: transform 0.08s ease, background 0.15s ease;
+    }
+    #shop .shop-pill-sell:hover  { background: rgba(255,107,107,0.25); border-color: rgba(255,107,107,0.6); }
+    #shop .shop-pill-sell:active { transform: scale(0.95); }
+    #shop .shop-pill-sell:disabled {
+      opacity: 0.4; cursor: not-allowed;
+    }
+
+    /* Compact offer row — collapsed state shows icon + name + buy button.
+       Tap row → reveals rarity + description below. */
+    #shop .shop-offer {
+      background: rgba(0,0,0,0.22);
+      border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.18));
+      border-radius: 10px;
+      padding: 6px 8px;
+      cursor: pointer;
+      transition: transform 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+    }
+    #shop .shop-offer.club-offer.special {
+      background: linear-gradient(180deg, rgba(255,107,107,0.16) 0%, rgba(0,0,0,0.22) 100%);
+    }
+    #shop .shop-offer.just-bought {
+      background: rgba(255,216,107,0.25);
+      transform: scale(1.02);
+    }
+    #shop .shop-offer.sold { opacity: 0.55; }
+    #shop .shop-offer-head {
+      display: flex; align-items: center; gap: 10px;
+      min-width: 0;
+    }
+    #shop .shop-offer-icon {
+      width: 32px; height: 32px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.25));
+      color: var(--rarity-color, white);
+      border-radius: 7px;
+      font-size: 14px;
+    }
+    #shop .shop-offer-name {
+      flex: 1; min-width: 0;
+      font-size: 13px; font-weight: 800;
+      color: white;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #shop .shop-offer-buy {
+      flex-shrink: 0;
+      min-width: 56px;
+      padding: 7px 12px;
+      background: #ffd86b;
+      color: #1f3a2a;
+      border: none; border-radius: 7px;
+      font-size: 12.5px; font-weight: 900; letter-spacing: 0.5px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.08s ease, opacity 0.15s ease;
+      white-space: nowrap;
+    }
+    #shop .shop-offer-buy:active { transform: scale(0.95); }
+    #shop .shop-offer-buy:disabled,
+    #shop .shop-offer-buy.cant-afford {
+      background: rgba(255,255,255,0.15);
+      color: rgba(255,255,255,0.5);
+      cursor: not-allowed;
+    }
+    #shop .shop-offer-buy.sold {
+      background: rgba(102,224,163,0.2);
+      color: #66e0a3;
+      border: 1.5px solid #66e0a3;
+    }
+    #shop .shop-offer-buy.bag-full {
+      background: rgba(255,107,107,0.18);
+      color: #ff9b9b;
+      border: 1.5px solid rgba(255,107,107,0.5);
+    }
+    #shop .shop-offer-detail {
+      margin-top: 6px;
+      padding: 6px 2px 2px;
+      border-top: 1px dashed rgba(255,255,255,0.18);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    #shop .shop-offer-rarity {
+      font-size: 9px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--rarity-color, white);
+      opacity: 0.85;
+    }
+    #shop .shop-offer-desc {
+      font-size: 11px;
+      opacity: 0.75;
+      line-height: 1.35;
+    }
+    #shop .shop-offer-limit {
+      font-size: 10px;
+      color: #ffb0b0;
+      letter-spacing: 0.4px;
+      margin-top: 2px;
+    }
 
     /* Reroll button — sits in the "For sale" section header */
     #shop .reroll-btn {
@@ -867,6 +1143,17 @@
       font-size: 12px; letter-spacing: 1.5px; opacity: 0.7;
       text-align: center; text-transform: uppercase;
     }
+    #cash-out .cashout-runscore {
+      text-align: center;
+      font-size: 11px; letter-spacing: 1.5px;
+      opacity: 0.75;
+      margin-top: -4px;
+    }
+    #cash-out .cashout-runscore .label { opacity: 0.6; margin-right: 6px; }
+    #cash-out .cashout-runscore .value { font-weight: 800; color: #ffd86b; }
+    #cash-out .cashout-runscore .value.under { color: #66e0a3; }
+    #cash-out .cashout-runscore .value.over  { color: #ff9b6b; }
+    #cash-out .cashout-runscore .value.even  { color: #ffffff; }
     #cash-out .cashout-score {
       text-align: center;
       font-size: 38px; font-weight: 900; letter-spacing: 2px;
@@ -1068,7 +1355,9 @@
     }
     #shot-distance {
       position: fixed;
-      top: env(safe-area-inset-top, 12px);
+      /* Sits centered just above the club selector — never obscures the
+         minimap on landings past the cup. */
+      bottom: calc(110px + env(safe-area-inset-bottom, 0px));
       left: 50%; transform: translateX(-50%);
       color: white;
       text-shadow: 0 2px 6px rgba(0,0,0,0.5);
@@ -1345,11 +1634,28 @@
     #hole-preview .preview-bagcount {
       padding: 4px 12px;
       background: rgba(0, 0, 0, 0.32);
+      border: 1px solid rgba(255, 255, 255, 0.25);
       border-radius: 999px;
       font-size: 12px; font-weight: 700;
       color: white;
-      opacity: 0.85;
+      opacity: 0.95;
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform 0.08s ease, background 0.15s ease;
     }
+    #hole-preview .preview-bagcount:active { transform: scale(0.95); }
+    #hole-preview .preview-bagcount:hover  { background: rgba(255, 255, 255, 0.12); }
+    #hole-preview .preview-runscore {
+      padding: 4px 12px;
+      background: rgba(0, 0, 0, 0.32);
+      border-radius: 999px;
+      font-size: 12px; font-weight: 800;
+      letter-spacing: 0.5px;
+      color: #ffd86b;
+    }
+    #hole-preview .preview-runscore.under { color: #66e0a3; }
+    #hole-preview .preview-runscore.over  { color: #ff9b6b; }
+    #hole-preview .preview-runscore.even  { color: #ffffff; }
     #hole-preview .phc-handicap {
       padding: 6px 10px;
       background: rgba(255, 80, 80, 0.18);
@@ -1522,6 +1828,11 @@
     body.preview-active #item-bar-popover,
     body.preview-active #wind-indicator,
     body.preview-active .rotate-btn { display: none !important; }
+
+    /* Rotate buttons should also disappear while the shop or cash-out
+       overlay is on screen — gameplay isn't actionable behind them. */
+    body.shop-active .rotate-btn,
+    body.cashout-active .rotate-btn { display: none !important; }
 
     /* Detail view — transparent overlay so the live 3D hole is visible behind it */
     #hole-detail {
@@ -1903,6 +2214,7 @@
   <div id="cash-out" role="dialog" aria-modal="true" aria-label="Cash out">
     <div class="cashout-card">
       <div class="cashout-title">Hole 1 · Par 4</div>
+      <div class="cashout-runscore"><span class="label">RUN</span><span class="value">E</span></div>
       <div class="cashout-score">PAR</div>
 
       <div class="cashout-track">

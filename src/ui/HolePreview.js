@@ -8,6 +8,7 @@
 // Mobile-first: cards stack vertically, modal scrolls if content overflows.
 
 import { holeFeatures, isBossHole, bossHandicapText } from '../content/holes.js';
+import { formatScore } from '../core/highscores.js';
 
 export class HolePreview {
   constructor() {
@@ -27,29 +28,44 @@ export class HolePreview {
    * @param {function} args.onPlay
    * @param {function} args.onSkip
    */
-  show({ round, totalRounds, holes, cash, bagItems, bagSlots, onPlay, onSkip }) {
+  show({ round, totalRounds, holes, cash, bagItems, bagSlots, runScore, onPlay, onSkip, onInventory }) {
     this._onPlay = onPlay || null;
     this._onSkip = onSkip || null;
+    this._onInventory = onInventory || null;
 
     const current = holes.find((h) => h.status === 'current');
     const isBossNow = current && isBossHole(current.holeNumber);
     this.modal.classList.toggle('boss', !!isBossNow);
 
     const bagBadge = (typeof bagItems === 'number' && typeof bagSlots === 'number')
-      ? `<div class="preview-bagcount"><i class="fa-solid fa-shapes"></i> ${bagItems}/${bagSlots}</div>`
+      ? `<button class="preview-bagcount" type="button" aria-label="Inventory"><i class="fa-solid fa-shapes"></i> ${bagItems}/${bagSlots}</button>`
       : '';
     const cashBadge = (typeof cash === 'number')
       ? `<div class="preview-cash">$${cash}</div>`
+      : '';
+    const scoreBadge = (typeof runScore === 'number')
+      ? `<div class="preview-runscore" data-cls="${runScore < 0 ? 'under' : runScore > 0 ? 'over' : 'even'}">RUN ${formatScore(runScore)}</div>`
       : '';
 
     this.headerEl.innerHTML = `
       <div class="preview-status-row">
         ${cashBadge}
+        ${scoreBadge}
         ${bagBadge}
       </div>
       <div class="preview-tag">${isBossNow ? '⚑ BOSS HOLE' : 'Up next'}</div>
       <div class="preview-round">Round ${round} / ${totalRounds}</div>
     `;
+    // Wire the inventory button (the bag-count chip is now tappable).
+    const invBtn = this.headerEl.querySelector('.preview-bagcount');
+    if (invBtn) {
+      invBtn.addEventListener('click', () => {
+        if (this._onInventory) this._onInventory();
+      });
+    }
+    // Apply score color via class for nicer styling (avoids inline styles).
+    const sc = this.headerEl.querySelector('.preview-runscore');
+    if (sc) sc.classList.add(sc.dataset.cls);
 
     this.cardsEl.innerHTML = '';
     for (const h of holes) {

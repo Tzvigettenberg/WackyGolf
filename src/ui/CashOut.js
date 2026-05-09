@@ -1,5 +1,6 @@
 // CashOut — Phase 4 prep (v2: single-row stroke track)
 import { sfx } from '../audio/Sfx.js';
+import { formatScore } from '../core/highscores.js';
 //
 // Full-screen overlay shown after holing out. One row of stroke-limit circles:
 //   green   = stroke used (within par)
@@ -23,6 +24,7 @@ export class CashOut {
 
     this.modal = document.getElementById('cash-out');
     this.titleEl = this.modal.querySelector('.cashout-title');
+    this.runScoreEl = this.modal.querySelector('.cashout-runscore .value');
     this.scoreEl = this.modal.querySelector('.cashout-score');
 
     // single-row stroke track
@@ -64,10 +66,19 @@ export class CashOut {
     this._rafs = [];
   }
 
-  show({ holeName, par, score, breakdown, cashBefore, cashAfter, streakCount }) {
+  show({ holeName, par, score, breakdown, cashBefore, cashAfter, streakCount, runScore }) {
     this._cancelAll();
 
     this.titleEl.textContent = `${holeName.toUpperCase()} · PAR ${par}`;
+    if (this.runScoreEl) {
+      this.runScoreEl.textContent = formatScore(runScore);
+      this.runScoreEl.classList.remove('under', 'over', 'even');
+      if (typeof runScore === 'number') {
+        if (runScore < 0)      this.runScoreEl.classList.add('under');
+        else if (runScore > 0) this.runScoreEl.classList.add('over');
+        else                    this.runScoreEl.classList.add('even');
+      }
+    }
     this.scoreEl.textContent = score.name;
     this.scoreEl.className = 'cashout-score ' + (score.kind || '');
 
