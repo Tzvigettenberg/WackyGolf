@@ -30,6 +30,7 @@ import { CashOut } from './ui/CashOut.js';
 import { Shop } from './ui/Shop.js';
 import { ItemBar } from './ui/ItemBar.js';
 import { HolePreview } from './ui/HolePreview.js';
+import { Confetti } from './ui/Confetti.js';
 
 // ----- Three.js setup -----
 const scene = new Scene();
@@ -183,6 +184,7 @@ function showRunOver() {
   renderRunOver({ completed: false });
   runOverEl.classList.add('shown');
   document.body.classList.add('run-over-active');
+  sfx.runOver();
 }
 function showRunComplete() {
   RunSave.clear();
@@ -195,6 +197,8 @@ function showRunComplete() {
   renderRunOver({ completed: true });
   runOverEl.classList.add('shown');
   document.body.classList.add('run-over-active');
+  // Big party for finishing the whole course.
+  confetti.burst({ count: 160 });
 }
 function hideRunOver() {
   runOverEl.classList.remove('shown', 'victory');
@@ -551,6 +555,9 @@ const rotateControls = new RotateControls(followCamera);
 // are active, pulses them on trigger events.
 const itemBar = new ItemBar({ run });
 
+// Confetti shower — fired on hole-in-one and course-complete.
+const confetti = new Confetti();
+
 // ----- swing controller -----
 const swing = new SwingController({
   ball: physics,
@@ -703,6 +710,13 @@ physics.onHoled = () => {
   swing.setEnabled(false);
   freezeAndFadeDistance();
   sfx.cupDrop();
+
+  // Hole-in-one party — kick off the confetti shower BEFORE cash-out
+  // appears so the celebration paints first, then the breakdown lands
+  // through the falling pieces.
+  if (result.kind === 'ace') {
+    confetti.burst({ count: 110 });
+  }
 
   // Compound Interest doubles the interest cap — pulse it when interest pays.
   if (run.hasItem('compound-interest') && result.breakdown.interest > 0) {

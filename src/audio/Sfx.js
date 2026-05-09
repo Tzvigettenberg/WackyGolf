@@ -224,6 +224,41 @@ class Sfx {
     osc.stop(t + dur + 0.05);
   }
 
+  /** Run over — short descending minor cue + low thud. The "you lose" cue. */
+  runOver() {
+    if (!this._ready()) return;
+    const t = this.ctx.currentTime;
+    // G4, Eb4, Bb3 — descending minor third + minor third = unresolved sad
+    const notes = [392, 311.13, 233.08];
+    for (let i = 0; i < notes.length; i++) {
+      const startT = t + i * 0.18;
+      const dur = 0.42;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(notes[i], startT);
+      osc.frequency.exponentialRampToValueAtTime(notes[i] * 0.85, startT + dur);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, startT);
+      g.gain.linearRampToValueAtTime(0.18, startT + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+      osc.connect(g).connect(this.master);
+      osc.start(startT);
+      osc.stop(startT + dur + 0.05);
+    }
+    // Low sine thud at the end for finality.
+    const thudT = t + 0.6;
+    const thud = this.ctx.createOscillator();
+    thud.type = 'sine';
+    thud.frequency.setValueAtTime(110, thudT);
+    thud.frequency.exponentialRampToValueAtTime(50, thudT + 0.55);
+    const tg = this.ctx.createGain();
+    tg.gain.setValueAtTime(0.32, thudT);
+    tg.gain.exponentialRampToValueAtTime(0.001, thudT + 0.55);
+    thud.connect(tg).connect(this.master);
+    thud.start(thudT);
+    thud.stop(thudT + 0.6);
+  }
+
   /** Cash gained — bright two-note coin chime. */
   cashGain() {
     if (!this._ready()) return;
