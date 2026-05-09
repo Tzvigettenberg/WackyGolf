@@ -108,7 +108,8 @@ export const CLUBS = [
     maxSpeed: 80,
     launchAngle: deg(3),
     cost: 18,
-    desc: 'Putter that LAUNCHES. Long, low, all roll.',
+    usesPerHole: 1,
+    desc: 'Putter that LAUNCHES. Long, low, all roll. 1 use per hole.',
     icon: 'icon-club',
   },
 

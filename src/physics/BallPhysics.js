@@ -122,6 +122,10 @@ export class BallPhysics {
     // refresh this before each shot from current run state.
     this.bounceMultiplier = 1.0;
 
+    // Multiplier on rolling friction (applied on top of per-surface). Heavy
+    // Ball pushes this above 1 so it stops rolling sooner.
+    this.frictionMultiplier = 1.0;
+
     // Wind — host writes {x,z} acceleration before each hole. Applied
     // ONLY while the ball is airborne; rolling balls aren't affected.
     this.windForce = { x: 0, z: 0 };
@@ -274,11 +278,12 @@ export class BallPhysics {
         }
         if (this.onBounce) this.onBounce(Math.min(1, incomingDown / 30), surface);
       } else {
-        // rolling — friction scaled by surface
+        // rolling — friction scaled by surface AND ball-item multiplier
+        // (Heavy Ball pushes frictionMultiplier > 1 → stops sooner).
         this.velocity.y = 0;
         const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
         if (horizSpeed > 0) {
-          const newSpeed = Math.max(0, horizSpeed - ROLL_DECEL * mod.friction * dt);
+          const newSpeed = Math.max(0, horizSpeed - ROLL_DECEL * mod.friction * this.frictionMultiplier * dt);
           const ratio = newSpeed / horizSpeed;
           this.velocity.x *= ratio;
           this.velocity.z *= ratio;
@@ -326,7 +331,7 @@ const SAMPLE_INTERVAL = 3;            // emit a trajectory sample every N steps 
 const MAX_SAMPLES = 60;               // hard cap on trajectory points returned
 
 /** One physics sub-step. Mutates the {p, v} pair. Returns true once at rest. */
-function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}) {
+function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}, frictionMultiplier = 1.0) {
   v.y += GRAVITY * PREDICT_DT;
 
   // Wind — same airborne-only gate as the live physics step.
@@ -368,7 +373,7 @@ function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 
       v.y = 0;
       const horiz = Math.hypot(v.x, v.z);
       if (horiz > 0) {
-        const newSpeed = Math.max(0, horiz - ROLL_DECEL * mod.friction * PREDICT_DT);
+        const newSpeed = Math.max(0, horiz - ROLL_DECEL * mod.friction * frictionMultiplier * PREDICT_DT);
         const ratio = newSpeed / horiz;
         v.x *= ratio; v.z *= ratio;
       }
@@ -382,11 +387,11 @@ function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 
  * Forward-simulate to final rest. Returns { x, y, z } of resting position.
  * Used by the cyan ground ring + minimap target circle.
  */
-export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}) {
+export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}, frictionMultiplier = 1.0) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   for (let i = 0; i < PREDICT_MAX_STEPS; i++) {
-    if (_step(p, v, surfaces, bounceMultiplier, windForce, surfaceMap)) return { x: p.x, y: p.y, z: p.z };
+    if (_step(p, v, surfaces, bounceMultiplier, windForce, surfaceMap, frictionMultiplier)) return { x: p.x, y: p.y, z: p.z };
   }
   return { x: p.x, y: p.y, z: p.z };
 }
@@ -402,7 +407,7 @@ export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0
  *                     3D orb display to the airborne arc only — the part
  *                     of the prediction that's most informative to the player.
  */
-export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}) {
+export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }, surfaceMap = {}, frictionMultiplier = 1.0) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   const samples = [];
@@ -420,7 +425,7 @@ export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier
       samples.push({ x: p.x, y: p.y, z: p.z });
     }
 
-    const atRest = _step(p, v, surfaces, bounceMultiplier, windForce, surfaceMap);
+    const atRest = _step(p, v, surfaces, bounceMultiplier, windForce, surfaceMap, frictionMultiplier);
 
     if (firstContactIdx < 0 && wasAirborne && p.y <= BALL_RADIUS + 0.05) {
       firstContactIdx = Math.max(0, samples.length - 1);

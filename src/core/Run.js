@@ -94,8 +94,9 @@ export class Run {
     // — i.e., were holed-out or busted. Skipped holes don't count. Lower = better.
     this.totalScore = 0;
     this.holesPlayed = 0;
-    // Weather Vane: once-per-hole rotate. Reset on startHole().
-    this.weatherVaneUsed = false;
+    // Wind rotations remaining this hole (Weather Vane / Tempest / Storm).
+    // Reset on startHole().
+    this.windRotationsLeft = 0;
 
     this._listeners = [];
   }
@@ -264,12 +265,21 @@ export class Run {
     this.strokes = 0;
     this.status = 'playing';
     this.lastResult = null;
-    // Per-hole flags reset on every hole start.
-    this.weatherVaneUsed = false;
+    // Refresh wind-rotation budget — highest-tier vane wins (no stacking).
+    this.windRotationsLeft = this._windRotationBudget();
     if (applyPayouts && this.hasItem('trust-fund')) {
       this.cash += 2 * this.itemCount('trust-fund');
     }
     this._emit();
+  }
+
+  /** Highest tier of Weather/Tempest/Storm Vane in the bag. Tiers don't
+   *  stack — having Weather + Tempest just gives Tempest's 2. */
+  _windRotationBudget() {
+    if (this.hasItem('storm-vane'))   return 3;
+    if (this.hasItem('tempest-vane')) return 2;
+    if (this.hasItem('weather-vane')) return 1;
+    return 0;
   }
 
   /** Move on to the next hole. Pass meta from the new template. */

@@ -261,29 +261,33 @@ export class SwingController {
     }
 
     const bounceMult = this.getBounceMultiplier();
-    // Pull live wind + surface remap straight off the physics object so the
-    // predicted trajectory matches the actual flight exactly.
+    // Pull live wind + surface remap + friction straight off the physics
+    // object so the predicted trajectory matches the actual flight exactly.
     const windForce = this.ball.windForce || { x: 0, z: 0 };
     const surfaceMap = this.ball.surfaceMap || {};
-    const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult, windForce, surfaceMap);
+    const frictionMult = this.ball.frictionMultiplier || 1.0;
+    const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult, windForce, surfaceMap, frictionMult);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
-    // Show the FINAL REST position so the marker is honest about where
-    // the ball actually ends up, including roll-off into hazards (the
-    // common island-hole footgun: ball lands on green, then rolls into
-    // water). Predictor + live physics share the same constants, so
-    // this matches the actual outcome modulo float drift.
+    // Marker shows where the ball FIRST touches down. Players see the
+    // landing point precisely; the post-landing roll is hinted at by a
+    // few extra dotted samples on the minimap but not pinpointed. Eagle
+    // Eye unlocks the precise final-rest read by extending samples to
+    // the full simulation.
     const eagleEye = this.getShowFullTrajectory();
-    const target = traj.rest;
+    const target = traj.firstContactPos || traj.rest;
 
     this._predictedRest = target;
     this.landingMarker.visible = true;
 
-    // Minimap dotted line: airborne arc only by default, full path with
-    // Eagle Eye (so the player can read where the ball will roll out to).
-    const samples = eagleEye
-      ? traj.samples
-      : traj.samples.slice(0, traj.firstContactIdx + 1);
+    // Minimap dotted line:
+    //   • default → airborne arc + ~3 post-landing samples (roll hint)
+    //   • Eagle Eye → full sample list including the rest of the roll
+    const ROLL_HINT_SAMPLES = 3;
+    const cap = eagleEye
+      ? traj.samples.length
+      : Math.min(traj.samples.length, traj.firstContactIdx + 1 + ROLL_HINT_SAMPLES);
+    const samples = traj.samples.slice(0, cap);
 
     this.onAim({
       x: target.x,

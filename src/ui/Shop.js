@@ -34,16 +34,29 @@ export class Shop {
     this.bodyEl = this.modal.querySelector('.shop-body-inner');
     this.titleEl = this.modal.querySelector('.shop-title');
 
+    // Universal slot-detail modal — populated when the player taps a
+    // bag or ball pill. Shared element since only one is open at a time.
+    this.slotModal       = document.getElementById('slot-modal');
+    this.slotModalIcon   = this.slotModal.querySelector('.slot-modal-icon');
+    this.slotModalRarity = this.slotModal.querySelector('.slot-modal-rarity');
+    this.slotModalName   = this.slotModal.querySelector('.slot-modal-name');
+    this.slotModalDesc   = this.slotModal.querySelector('.slot-modal-desc');
+    this.slotModalSell   = this.slotModal.querySelector('.slot-modal-sell');
+    this.slotModal.querySelector('.slot-modal-close')
+      .addEventListener('click', () => this._closeSlotModal());
+    this.slotModal.addEventListener('click', (e) => {
+      if (e.target === this.slotModal) this._closeSlotModal();
+    });
+    this._slotSellHandler = null;
+
     // offers: array of { type: 'item' | 'club', id }
     this.offers = [];
     // ids (per type prefix, e.g. 'item:heavy-driver') already bought THIS visit.
     this.purchasedThisVisit = new Set();
-    // Per-section expand state. Each section tracks its own — only one row
-    // is open at a time within each section, but you can have one item +
-    // one club + one offer expanded simultaneously across sections.
-    this.expandedSlot = -1;       // bag slot index
+    // Bag/ball details now live in the slot-modal (centered popup), so
+    // there's no inline expand state anymore. Clubs and offers still expand
+    // inline below their pills (compact-fit reasons).
     this.expandedClubIdx = -1;    // owned club slot index
-    this.expandedBall = false;    // boolean — equipped ball expanded
     this.expandedOfferKey = null; // string — 'item:id' or 'club:id'
 
     this.continueBtn.addEventListener('click', () => {
@@ -67,10 +80,9 @@ export class Shop {
     }
     this.offers = this._rollOffers(OFFERS_PER_VISIT);
     this.purchasedThisVisit = new Set();
-    this.expandedSlot = -1;
     this.expandedClubIdx = -1;
-    this.expandedBall = false;
     this.expandedOfferKey = null;
+    this._closeSlotModal();
     this._buildBody();
     this._refresh();
     this.modal.classList.add('shown');
@@ -79,6 +91,7 @@ export class Shop {
 
   hide() {
     this.modal.classList.remove('shown');
+    this._closeSlotModal();
     document.body.classList.remove('shop-active');
   }
 
@@ -113,7 +126,6 @@ export class Shop {
           <span class="bag-count"></span>
         </div>
         <div class="bag-slots"></div>
-        <div class="bag-detail" style="display:none"></div>
       </div>
       <div class="items-section">
         <div class="items-section-title">
@@ -121,7 +133,6 @@ export class Shop {
           <span class="equip-status"></span>
         </div>
         <div class="ball-slots"></div>
-        <div class="ball-detail" style="display:none"></div>
       </div>
       <div class="items-section">
         <div class="items-section-title">
@@ -265,18 +276,16 @@ export class Shop {
     this._refresh();
   }
 
-  /** Buy an equipment item (e.g. a ball). Auto-refunds whatever was equipped. */
+  /** Buy an equipment item (e.g. a ball). Refuses if a ball is already
+   *  equipped — the player must explicitly sell the old one first so
+   *  there's no surprise auto-refund. */
   _tryBuyEquipment(id, item) {
     if (item.slot !== 'ball') return; // future: hat/shirt/etc
     if (this.run.ball === id) return;  // already equipped, no-op
+    if (this.run.ball) return;         // slot occupied — sell first
     const cost = this.run.effectiveCost(item.cost);
     if (this.run.cash < cost) return;
 
-    // Auto-refund the previously equipped ball at half cost.
-    if (this.run.ball) {
-      const prev = itemById(this.run.ball);
-      if (prev) this.run.cash += this.run.sellValue(prev.cost);
-    }
     this.run.cash -= cost;
     this.run.equipBall(id);
     sfx.uiBuy();
@@ -322,8 +331,6 @@ export class Shop {
     if (!this.run.removeAt(slotIndex)) return;
     this.run.cash += value;
     sfx.uiSell();
-    if (this.expandedSlot === slotIndex) this.expandedSlot = -1;
-    else if (this.expandedSlot > slotIndex) this.expandedSlot -= 1;
     this._refresh();
   }
 
@@ -358,9 +365,40 @@ export class Shop {
     this._refresh();
   }
 
-  _toggleExpand(slotIndex) {
-    this.expandedSlot = this.expandedSlot === slotIndex ? -1 : slotIndex;
-    this._refresh();
+  /**
+   * Open the universal slot-detail modal for an item. The host passes a
+   * sell handler that knows whether this is a bag slot or the ball slot;
+   * the modal just calls it on click and closes itself.
+   */
+  _openSlotModal(item, onSell) {
+    if (!item || !this.slotModal) return;
+    const color = RARITY_COLORS[item.rarity] || '#fff';
+    this.slotModal.style.setProperty('--rarity-color', color);
+    this.slotModalIcon.className = `slot-modal-icon ${item.icon || 'fa-solid fa-circle'}`;
+    this.slotModalRarity.textContent = item.rarity || '';
+    this.slotModalName.textContent = item.name;
+    this.slotModalDesc.textContent = item.desc || '';
+    const sellValue = this.run.sellValue(item.cost);
+    this.slotModalSell.textContent = `Sell $${sellValue}`;
+    // Replace the previous handler so we don't accumulate listeners.
+    if (this._slotSellHandler) {
+      this.slotModalSell.removeEventListener('click', this._slotSellHandler);
+    }
+    this._slotSellHandler = () => {
+      if (onSell) onSell();
+      this._closeSlotModal();
+    };
+    this.slotModalSell.addEventListener('click', this._slotSellHandler);
+    this.slotModal.classList.add('shown');
+  }
+
+  _closeSlotModal() {
+    if (!this.slotModal) return;
+    this.slotModal.classList.remove('shown');
+    if (this._slotSellHandler) {
+      this.slotModalSell.removeEventListener('click', this._slotSellHandler);
+      this._slotSellHandler = null;
+    }
   }
 
   // ----- refresh -----
@@ -375,7 +413,6 @@ export class Shop {
 
   _refreshBall() {
     const slotsEl = this.bodyEl.querySelector('.ball-slots');
-    const detailEl = this.bodyEl.querySelector('.ball-detail');
     const status = this.bodyEl.querySelector('.equip-status');
     if (!slotsEl) return;
     slotsEl.innerHTML = '';
@@ -384,53 +421,23 @@ export class Shop {
     const slot = document.createElement('div');
     slot.className = 'bag-slot';
     if (!id) {
-      // Empty ball slot looks like an empty bag slot — visible chip with a
-      // dashed border and "+" rather than a fallback line of text.
       slot.classList.add('empty');
       slot.innerHTML = '<span class="bag-slot-plus">+</span>';
       slotsEl.appendChild(slot);
       if (status) status.textContent = 'empty';
-      if (detailEl) {
-        detailEl.style.display = 'none';
-        detailEl.innerHTML = '';
-      }
       return;
     }
     const item = itemById(id);
     if (!item) return;
     if (status) status.textContent = 'equipped';
     slot.classList.add('filled');
-    if (this.expandedBall) slot.classList.add('selected');
     slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-    slot.innerHTML = `<i class="bag-slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>`;
-    slot.addEventListener('click', () => {
-      this.expandedBall = !this.expandedBall;
-      this._refresh();
-    });
+    slot.innerHTML = `
+      <i class="bag-slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>
+      <span class="bag-slot-name">${item.name}</span>
+    `;
+    slot.addEventListener('click', () => this._openSlotModal(item, () => this._trySellBall()));
     slotsEl.appendChild(slot);
-
-    if (detailEl) {
-      if (!this.expandedBall) {
-        detailEl.style.display = 'none';
-        detailEl.innerHTML = '';
-      } else {
-        const sellValue = this.run.sellValue(item.cost);
-        detailEl.style.display = '';
-        detailEl.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-        detailEl.innerHTML = `
-          <div class="bag-detail-head">
-            <i class="bag-detail-icon ${item.icon || 'fa-solid fa-circle'}"></i>
-            <div class="bag-detail-titles">
-              <div class="bag-detail-rarity">${item.rarity}</div>
-              <div class="bag-detail-name">${item.name}</div>
-            </div>
-          </div>
-          <div class="bag-detail-desc">${item.desc}</div>
-          <button class="bag-detail-sell" type="button">Sell $${sellValue}</button>
-        `;
-        detailEl.querySelector('.bag-detail-sell').addEventListener('click', () => this._trySellBall());
-      }
-    }
   }
 
   _refreshBag() {
@@ -438,7 +445,6 @@ export class Shop {
     if (countEl) countEl.textContent = `${this.run.items.length} / ${this.run.bagSlots}`;
 
     const slotsEl = this.bodyEl.querySelector('.bag-slots');
-    const detailEl = this.bodyEl.querySelector('.bag-detail');
     if (!slotsEl) return;
     slotsEl.innerHTML = '';
 
@@ -455,41 +461,14 @@ export class Shop {
       const item = itemById(id);
       if (!item) continue;
       slot.classList.add('filled');
-      if (this.expandedSlot === i) slot.classList.add('selected');
       slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-      slot.innerHTML = `<i class="bag-slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>`;
+      slot.innerHTML = `
+        <i class="bag-slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>
+        <span class="bag-slot-name">${item.name}</span>
+      `;
       const idx = i;
-      slot.addEventListener('click', () => this._toggleExpand(idx));
+      slot.addEventListener('click', () => this._openSlotModal(item, () => this._trySellItem(idx)));
       slotsEl.appendChild(slot);
-    }
-
-    // Detail panel below the chip grid — shows the currently-expanded slot.
-    if (detailEl) {
-      const idx = this.expandedSlot;
-      const id = idx >= 0 ? this.run.items[idx] : null;
-      if (!id) {
-        detailEl.style.display = 'none';
-        detailEl.innerHTML = '';
-      } else {
-        const item = itemById(id);
-        if (item) {
-          const sellValue = this.run.sellValue(item.cost);
-          detailEl.style.display = '';
-          detailEl.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-          detailEl.innerHTML = `
-            <div class="bag-detail-head">
-              <i class="bag-detail-icon ${item.icon || 'fa-solid fa-circle'}"></i>
-              <div class="bag-detail-titles">
-                <div class="bag-detail-rarity">${item.rarity}</div>
-                <div class="bag-detail-name">${item.name}</div>
-              </div>
-            </div>
-            <div class="bag-detail-desc">${item.desc}</div>
-            <button class="bag-detail-sell" type="button">Sell $${sellValue}</button>
-          `;
-          detailEl.querySelector('.bag-detail-sell').addEventListener('click', () => this._trySellItem(idx));
-        }
-      }
     }
   }
 
@@ -556,11 +535,11 @@ export class Shop {
         const item = itemById(id);
         if (!item) continue;
         cost = this.run.effectiveCost(item.cost);
-        // Equipment items (e.g. ball) never block on "bag full" — they
-        // auto-replace whatever's in their slot. They DO show OWNED if
-        // they're already equipped.
         if (isEquipment(item)) {
-          full = false;
+          // Ball is equipped already (this exact one) → OWNED.
+          // Ball slot is occupied by a DIFFERENT ball → "SLOT FULL"
+          // (player must sell the old one first; no auto-refund).
+          full = !!this.run.ball && this.run.ball !== id;
           sold = this.run.ball === id;
           key = `equip:${id}`;
         } else {

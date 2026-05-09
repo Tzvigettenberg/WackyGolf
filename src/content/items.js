@@ -113,14 +113,6 @@ export const ITEMS = [
 
   // ---- wind utility items ----
   {
-    id: 'wind-charm',
-    name: 'Wind Charm',
-    desc: 'Wind has no effect on your shots.',
-    cost: 18,
-    rarity: 'rare',
-    icon: 'icon-gem',
-  },
-  {
     id: 'tailwind-talisman',
     name: 'Tailwind Talisman',
     desc: 'Each hole, wind blows from your tee toward the cup.',
@@ -128,12 +120,31 @@ export const ITEMS = [
     rarity: 'rare',
     icon: 'icon-gem',
   },
+  // Three tiers of wind-rotators. Highest tier in your bag wins (no
+  // stacking copies — owning Storm Vane while also owning Weather Vane
+  // just gives you Storm Vane's 3 rotations).
   {
     id: 'weather-vane',
     name: 'Weather Vane',
-    desc: 'Tap the wind meter once per hole to rotate wind 90° clockwise.',
+    desc: 'Tap the wind meter to rotate wind 90° clockwise. 1 use per hole.',
+    cost: 9,
+    rarity: 'common',
+    icon: 'icon-gem',
+  },
+  {
+    id: 'tempest-vane',
+    name: 'Tempest Vane',
+    desc: 'Rotate wind 90° clockwise. 2 uses per hole.',
     cost: 14,
     rarity: 'uncommon',
+    icon: 'icon-gem',
+  },
+  {
+    id: 'storm-vane',
+    name: 'Storm Vane',
+    desc: 'Rotate wind 90° clockwise. 3 uses per hole.',
+    cost: 18,
+    rarity: 'rare',
     icon: 'icon-gem',
   },
 

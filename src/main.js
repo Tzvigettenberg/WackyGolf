@@ -219,11 +219,15 @@ function hideRunOver() {
  */
 function applyWindToWorld() {
   let mult = 1;
-  if (run.ball === 'heavy-ball')      mult *= 0.5;
-  if (run.hasItem('wind-charm'))      mult  = 0;
+  if (run.ball === 'heavy-ball') mult *= 0.5;
   physics.windForce = wind.effectiveForce(mult);
   if (typeof updateWindUI === 'function') updateWindUI(mult);
   if (windFx) windFx.setWind(physics.windForce);
+  // Effective wind on the minimap (post-multiplier) — speed of 0 hides
+  // the arrow so a Heavy Ball or item override reads correctly.
+  if (typeof minimap !== 'undefined' && minimap) {
+    minimap.setWind(wind.angle, wind.speed * mult);
+  }
 }
 
 // Apply item-driven world effects: ball color/glow, bounce multiplier on
@@ -244,6 +248,8 @@ function applyItemEffects() {
     physics.bounceMultiplier = 1.0;
     trail.setColor(0xffd86b);
   } else if (run.ball === 'heavy-ball') {
+    // Heavy Ball — denser physics: lower bounce + higher friction so it
+    // stops rolling sooner. Steel-grey ball.
     ballMesh.material.color.setHex(0x8c95a0);
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x000000);
     physics.bounceMultiplier = 0.85;
@@ -276,6 +282,10 @@ function applyItemEffects() {
   if (run.ball === 'all-terrain-ball') surfaceMap.rough = 'fairway';
   physics.surfaceMap = surfaceMap;
 
+  // Heavy Ball is denser → higher rolling friction. Predictor reads the
+  // same value via SwingController so prediction stays accurate.
+  physics.frictionMultiplier = run.ball === 'heavy-ball' ? 1.55 : 1.0;
+
   // Range Finder — distance rings on the minimap
   minimap.setRangeRings(run.hasItem('range-finder'));
 }
@@ -283,9 +293,9 @@ function applyItemEffects() {
 run.onChange(() => {
   updateHUD();
   applyItemEffects();
-  // Heavy Ball / Wind Charm change wind strength on the fly. Direction
-  // override (Tailwind Talisman) is set at hole load only — that's fine,
-  // it kicks in next hole.
+  // Heavy Ball changes wind strength on the fly. Direction-override and
+  // rotation-budget items (Tailwind Talisman, Vanes) are evaluated at
+  // hole start so they kick in on the next hole's load.
   applyWindToWorld();
 });
 updateHUD();
@@ -642,22 +652,30 @@ function updateWindUI(multiplier = 1) {
   windSpeedEl.textContent = effSpeed < 0.05 ? '0' : effSpeed.toFixed(1);
   windIndicatorEl.classList.toggle('blocked', multiplier === 0);
   windIndicatorEl.classList.toggle('calm', effSpeed < 0.5 && multiplier !== 0);
-  // Weather Vane: indicator becomes tappable when the player owns the item
-  // AND hasn't used the rotate this hole. Visual highlight via a class.
-  const canRotate = run.hasItem('weather-vane') && !run.weatherVaneUsed && run.isPlayable;
+  // Wind chip becomes tappable when the player has rotations available
+  // (Weather/Tempest/Storm Vane). The remaining count is shown as a small
+  // pip count next to the speed.
+  const canRotate = run.windRotationsLeft > 0 && run.isPlayable;
   windIndicatorEl.classList.toggle('rotatable', canRotate);
   windIndicatorEl.style.pointerEvents = canRotate ? 'auto' : 'none';
 }
 
-// Weather Vane click handler — rotate wind 90° clockwise once per hole.
+// Wind-rotate handler — tap the chip to rotate wind 90° clockwise. The
+// per-hole budget comes from whichever Vane tier the player owns
+// (Weather / Tempest / Storm).
 if (windIndicatorEl) {
   windIndicatorEl.addEventListener('click', () => {
-    if (!run.hasItem('weather-vane') || run.weatherVaneUsed || !run.isPlayable) return;
-    run.weatherVaneUsed = true;
+    if (run.windRotationsLeft <= 0 || !run.isPlayable) return;
+    run.windRotationsLeft -= 1;
     wind.setAngle(wind.angle + Math.PI / 2);
     applyWindToWorld();
     sfx.uiClick();
-    itemBar.trigger('weather-vane', 'rotated');
+    // Pulse whichever Vane the player has so they see the trigger.
+    if (run.hasItem('storm-vane'))        itemBar.trigger('storm-vane', 'rotated');
+    else if (run.hasItem('tempest-vane')) itemBar.trigger('tempest-vane', 'rotated');
+    else if (run.hasItem('weather-vane')) itemBar.trigger('weather-vane', 'rotated');
+    // Re-render the chip rotatable state after the rotation budget drops.
+    updateWindUI(run.ball === 'heavy-ball' ? 0.5 : 1);
   });
 }
 

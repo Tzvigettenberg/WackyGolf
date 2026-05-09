@@ -41,11 +41,20 @@ export class Minimap {
     this.trajectory = null;
     // Range Finder item — when true, draw 50/100/150 yd rings centered on ball.
     this.showRangeRings = false;
+    // Wind state — drawn as a small arrow in the top-left corner so the
+    // player sees direction in the spatial top-down context, not just on
+    // the floating wind chip. Speed gates rendering: ~0 = no arrow.
+    this.windAngle = 0;
+    this.windSpeed = 0;
 
     this.setLayout(layout);
   }
 
   setRangeRings(show) { this.showRangeRings = !!show; }
+  setWind(angle, speed) {
+    this.windAngle = angle || 0;
+    this.windSpeed = speed || 0;
+  }
 
   /** Swap the hole layout (called when a new hole is loaded). */
   setLayout(layout) {
@@ -211,6 +220,47 @@ export class Minimap {
     ctx.arc(this._tx(this.ballX), this._tz(this.ballZ), 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
+
+    // wind arrow — top-left corner, points in wind direction. Drawn last
+    // so it's never occluded by hole geometry.
+    if (this.windSpeed > 0.05) {
+      const cx = 16, cy = 16;
+      // World angle 0 = +X (east). Canvas y axis is inverted vs world Z,
+      // but our top-down map keeps world Z = canvas Y, so wind direction
+      // (cos, sin) maps directly to canvas (x, y).
+      const dx = Math.cos(this.windAngle);
+      const dy = Math.sin(this.windAngle);
+      const len = 9;
+      const tipX = cx + dx * len;
+      const tipY = cy + dy * len;
+      const tailX = cx - dx * len * 0.5;
+      const tailY = cy - dy * len * 0.5;
+      // soft round backplate
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+      ctx.fill();
+      // shaft
+      ctx.strokeStyle = '#ff5544';
+      ctx.lineWidth = 2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(tailX, tailY);
+      ctx.lineTo(tipX, tipY);
+      ctx.stroke();
+      // arrowhead — small triangle at tip, perpendicular to direction
+      const headLen = 5;
+      const perpX = -dy, perpY = dx;
+      ctx.fillStyle = '#ff5544';
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(tipX - dx * headLen + perpX * headLen * 0.5,
+                 tipY - dy * headLen + perpY * headLen * 0.5);
+      ctx.lineTo(tipX - dx * headLen - perpX * headLen * 0.5,
+                 tipY - dy * headLen - perpY * headLen * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // border
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';

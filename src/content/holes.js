@@ -155,6 +155,100 @@ export const HOLES = [
       { type: 'circle', cx: 0, cz: 5, radius: 19 },
     ],
   },
+
+  // -------------------- HOLE 5: Forest Drive (par 5, ~290 yd) --------------------
+  // Long, straight, dense-treelined par 5. The fairway is a corridor —
+  // miss-aim and you're in the woods. Two sets of bunkers force a real
+  // decision on the layup vs. carry to the green.
+  {
+    id: 'forest-drive',
+    name: 'Forest Drive',
+    par: 5,
+    teePosition: new Vector3(0, 0, 145),
+    cupPosition: new Vector3(0, 0, -145),
+    fairway: [
+      { cx: 0, cz:  100, w: 14, h: 100 },   // tee leg
+      { cx: 0, cz:    0, w: 14, h: 100 },   // mid landing
+      { cx: 0, cz: -120, w: 14, h: 70 },    // approach to green
+    ],
+    green:  { cx: 0, cz: -145, radius: 5 },
+    bounds: { minX: -36, maxX: 36, minZ: -165, maxZ: 165 },
+    trees: [
+      // ---- left wall of trees, dense and continuous ----
+      [-12, 140, 1.0], [-12, 110, 1.1], [-12, 80,  1.0],
+      [-12,  50, 1.0], [-12,  20, 1.0], [-12, -10, 1.1],
+      [-12, -40, 1.0], [-12, -70, 0.9], [-12, -100, 1.0],
+      [-12, -130, 1.0], [-12, -155, 0.9],
+      // outer left
+      [-22, 130, 1.1], [-22, 90,  1.0], [-22, 50,  1.0],
+      [-22,  10, 1.1], [-22, -30, 1.0], [-22, -70, 1.0],
+      [-22, -110, 1.0], [-22, -150, 0.9],
+      // ---- right wall ----
+      [12, 140, 1.0], [12, 110, 1.0], [12, 80,  1.1],
+      [12,  50, 1.0], [12,  20, 1.0], [12, -10, 1.0],
+      [12, -40, 1.1], [12, -70, 1.0], [12, -100, 1.0],
+      [12, -130, 1.0], [12, -155, 0.9],
+      [22, 130, 1.0], [22, 90,  1.0], [22, 50,  1.1],
+      [22,  10, 1.0], [22, -30, 1.0], [22, -70, 1.0],
+      [22, -110, 1.0], [22, -150, 0.9],
+      // sparse trees behind the green
+      [-8, -160, 1.0], [8, -160, 1.0],
+    ],
+    bunkers: [
+      // first bunker cluster — punishes lay-up overshoot
+      { cx:  -4, cz:  20, radius: 2.5 },
+      { cx:   5, cz:  10, radius: 2.0 },
+      // greenside
+      { cx:  -5, cz: -135, radius: 2 },
+      { cx:   5, cz: -150, radius: 2 },
+    ],
+    water: [],
+  },
+
+  // -------------------- HOLE 6: Highlands (par 4, ~220 yd) --------------------
+  // Tree-corridor par 4 with a slight dogleg right and a bunker carry
+  // before the green. Trees deep on both sides — accuracy hole.
+  {
+    id: 'highlands',
+    name: 'Highlands',
+    par: 4,
+    teePosition: new Vector3(-15, 0, 100),
+    cupPosition: new Vector3(15, 0, -100),
+    fairway: [
+      { cx: -15, cz:  60, w: 14, h: 80 },   // tee leg
+      { cx:   0, cz:   0, w: 26, h: 30 },   // bend zone
+      { cx:  15, cz: -65, w: 16, h: 70 },   // approach
+    ],
+    green:  { cx: 15, cz: -100, radius: 5 },
+    bounds: { minX: -38, maxX: 36, minZ: -125, maxZ: 120 },
+    trees: [
+      // outer left wall
+      [-26, 95, 1.1], [-26, 65, 1.0], [-26, 30, 1.0],
+      [-26,  0, 1.1], [-26, -30, 1.0], [-26, -65, 1.0],
+      [-26, -95, 0.9], [-26, -120, 0.9],
+      // inner-left edge of the dogleg
+      [-9, 100, 1.0], [-9,  60, 1.0], [-9,  20, 1.0],
+      // inside corner trees (block the cut)
+      [ 0,  20, 1.0], [ 5,  10, 0.9], [-3,  15, 1.0],
+      // outer right wall
+      [26, 90, 1.0], [26, 50, 1.0], [26,  10, 1.1],
+      [26, -30, 1.0], [26, -70, 1.0], [26, -100, 0.9],
+      // inner-right approach trees
+      [ 7, -30, 1.0], [25, -60, 1.0], [25, -90, 0.9],
+      // around tee
+      [-22, 110, 0.9], [-8, 110, 1.0],
+      // beyond green
+      [ 5, -118, 0.9], [25, -118, 1.0],
+    ],
+    bunkers: [
+      // one mid-fairway sand trap at the bend
+      { cx:  4, cz: -10, radius: 2.5 },
+      // greenside front-left + back
+      { cx:  8, cz: -90, radius: 2 },
+      { cx: 22, cz: -108, radius: 2 },
+    ],
+    water: [],
+  },
 ];
 
 /** Pick the template for a given hole number (1-indexed). Cycles. */
@@ -168,11 +262,13 @@ export function templateForHole(holeNumber) {
   return HOLES[(round - 1) % HOLES.length];
 }
 
-/** A run is 9 holes. After holing #9 the player wins the run. */
-export const RUN_LENGTH = 9;
+/** A run is 18 holes — 6 rounds of 3 holes each. After holing #18 the
+ *  player wins the run. The 6 hole templates cycle once per round so each
+ *  round plays a distinct template (round 1 = hole 1's template, etc). */
+export const RUN_LENGTH = 18;
 
-/** Boss holes: stricter stroke limit + double payout multiplier. */
-export const BOSS_HOLES = new Set([3, 6, 9]);
+/** Boss holes: stricter stroke limit + double payout multiplier. Every 3rd. */
+export const BOSS_HOLES = new Set([3, 6, 9, 12, 15, 18]);
 
 export function isBossHole(holeNumber) {
   return BOSS_HOLES.has(holeNumber);
