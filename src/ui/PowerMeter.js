@@ -22,7 +22,12 @@ export class PowerMeter {
     this.set(null);
   }
 
-  set(power) {
+  /**
+   * Show the meter at `power` (0..1). Pass `{ cancel: true }` to switch to
+   * the "release here to cancel" indicator — bar shows in muted red with
+   * a CANCEL label so the player knows their next release won't fire.
+   */
+  set(power, opts = {}) {
     if (power == null) {
       this.container.style.opacity = '0';
       return;
@@ -30,9 +35,14 @@ export class PowerMeter {
     this.container.style.opacity = '1';
     const pct = Math.max(0, Math.min(1, power));
     this.fill.style.height = `${pct * 100}%`;
-    // green (120°) at 0% → red (0°) at 100%
-    const hue = 120 - pct * 120;
-    this.fill.style.background = `hsl(${hue}, 85%, 50%)`;
-    this.label.textContent = `${Math.round(pct * 100)}%`;
+    if (opts.cancel) {
+      this.fill.style.background = 'hsl(0, 55%, 38%)';
+      this.label.textContent = 'CANCEL';
+    } else {
+      // green (120°) at 0% → red (0°) at 100%
+      const hue = 120 - pct * 120;
+      this.fill.style.background = `hsl(${hue}, 85%, 50%)`;
+      this.label.textContent = `${Math.round(pct * 100)}%`;
+    }
   }
 }

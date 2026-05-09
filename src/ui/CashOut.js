@@ -111,6 +111,7 @@ export class CashOut {
     this.strokesCountEl.textContent = `${score.strokes}/${score.strokeLimit}`;
 
     this.modal.classList.add('shown');
+    document.body.classList.add('cashout-active');
 
     // ----- Animate in sequence -----
     let delay = FADE_IN_MS;
@@ -173,6 +174,7 @@ export class CashOut {
 
   hide() {
     this.modal.classList.remove('shown');
+    document.body.classList.remove('cashout-active');
     this._cancelAll();
   }
 
@@ -197,7 +199,8 @@ export class CashOut {
     const { strokes, par, strokeLimit } = score;
 
     // Phase 1: fill in strokes one by one (green, or red if past par).
-    // A short surface-themed tick per ball gives each stroke a beat.
+    // No per-ball SFX — sounds on this screen are reserved for actual cash
+    // count-ups (see _countUp / _animate). The ball animation is purely visual.
     let count = 0;
     for (let i = 0; i < Math.min(strokes, balls.length); i++) {
       const isOver = i >= par;
@@ -205,9 +208,6 @@ export class CashOut {
         balls[i].classList.add(isOver ? 'over' : 'used');
         count += 1;
         this.strokesCountEl.textContent = `${count}/${strokeLimit}`;
-        // Tick rises in pitch with each successive stroke for a satisfying ladder.
-        const pitch = Math.min(1, 0.3 + i * 0.08);
-        sfx.bounce(pitch, isOver ? 'rough' : 'fairway');
       }, delay));
       delay += STROKE_GAP;
     }
@@ -216,21 +216,17 @@ export class CashOut {
     delay += 220;
 
     // Phase 2: glow saved-under-par circles (positions strokes..par-1).
-    // Each gold ball is a "saved stroke" — celebrate with a coin chime.
     for (let i = strokes; i < par; i++) {
       this._timers.push(setTimeout(() => {
         balls[i].classList.add('saved-par');
-        sfx.cashGain();
       }, delay));
       delay += SAVED_GAP + 30;
     }
 
     // Phase 3: glow saved-leeway circles (positions max(strokes,par)..limit-1).
-    // Subtle ticks — these don't pay (in v1 economy) but still mark "cushion".
     for (let i = Math.max(strokes, par); i < strokeLimit; i++) {
       this._timers.push(setTimeout(() => {
         balls[i].classList.add('saved-leeway');
-        sfx.uiClick();
       }, delay));
       delay += SAVED_GAP - 20;
     }

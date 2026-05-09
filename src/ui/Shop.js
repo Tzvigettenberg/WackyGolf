@@ -65,9 +65,13 @@ export class Shop {
     this._buildBody();
     this._refresh();
     this.modal.classList.add('shown');
+    document.body.classList.add('shop-active');
   }
 
-  hide() { this.modal.classList.remove('shown'); }
+  hide() {
+    this.modal.classList.remove('shown');
+    document.body.classList.remove('shop-active');
+  }
 
   // ----- offer pool -----
 

@@ -76,6 +76,7 @@ followCamera.snap(physics.position);
 const run = new Run();
 
 const holeEl = document.getElementById('stat-hole');
+const bossEl = document.getElementById('stat-boss');
 const strokesEl = document.getElementById('stat-strokes');
 const cashEl = document.getElementById('stat-cash');
 const banner = document.getElementById('score-banner');
@@ -114,10 +115,20 @@ function clearDistanceImmediate() {
 
 function updateHUD() {
   const name = (currentHole && currentHole.name) ? ` · ${currentHole.name.toUpperCase()}` : '';
-  const handicap = run.holeMeta.bossHandicap;
-  const bossTag = handicap ? ` · ⚑ ${handicap.toUpperCase().replace('-', ' ')}` : '';
-  holeEl.textContent = `HOLE ${run.holeNumber}/${RUN_LENGTH}${name} · PAR ${run.holeMeta.par}${bossTag}`;
+  holeEl.textContent = `HOLE ${run.holeNumber}/${RUN_LENGTH}${name} · PAR ${run.holeMeta.par}`;
   holeEl.classList.toggle('boss', isBossHole(run.holeNumber));
+
+  // Boss handicap gets its own pill below the cash row so the main hole
+  // line stays narrow and never reaches the minimap on portrait.
+  const handicap = run.holeMeta.bossHandicap;
+  if (handicap) {
+    bossEl.textContent = `⚑ ${handicap.toUpperCase().replace('-', ' ')}`;
+    bossEl.hidden = false;
+  } else {
+    bossEl.textContent = '';
+    bossEl.hidden = true;
+  }
+
   strokesEl.textContent = `STROKE ${run.strokes}/${run.holeMeta.strokeLimit}`;
   strokesEl.classList.toggle('warning', run.strokesLeft === 2);
   strokesEl.classList.toggle('last-chance', run.strokesLeft === 1);
@@ -401,9 +412,15 @@ function openPauseMenu() {
   pauseMenu.show();
 }
 
-// Single global menu button (top-left of viewport, above every modal) —
-// works during gameplay AND on shop / preview / cash-out.
+// Pause-menu buttons:
+//   #global-menu-btn     fallback for overlays without their own (preview, cash-out)
+//   #hud-menu-btn        inline in the gameplay HUD, beside the title
+//   .shop-menu-btn       inline in the shop header, beside "Pro Shop"
+// All three call the same openPauseMenu so a player can pause from anywhere.
 document.getElementById('global-menu-btn').addEventListener('click', openPauseMenu);
+document.getElementById('hud-menu-btn').addEventListener('click', openPauseMenu);
+const shopMenuBtn = document.querySelector('#shop .shop-menu-btn');
+if (shopMenuBtn) shopMenuBtn.addEventListener('click', openPauseMenu);
 
 function enterTitleScreen() {
   inGame = false;
@@ -566,15 +583,24 @@ const swing = new SwingController({
     startDistanceCounter();
   },
   onAim: (target) => {
-    if (target) {
-      minimap.setTarget(target.x, target.z);
-      minimap.setTrajectory(target.samples);
-      powerMeter.set(target.power);
-    } else {
+    if (!target) {
       minimap.clearTarget();
       minimap.clearTrajectory();
       powerMeter.set(null);
+      return;
     }
+    if (target.cancel) {
+      // Player has dragged back into the cancel zone — drop the trajectory
+      // preview, switch the power meter into CANCEL mode so the next
+      // release is clearly a no-op.
+      minimap.clearTarget();
+      minimap.clearTrajectory();
+      powerMeter.set(target.power, { cancel: true });
+      return;
+    }
+    minimap.setTarget(target.x, target.z);
+    minimap.setTrajectory(target.samples);
+    powerMeter.set(target.power);
   },
   // Items boost effective club speed. Heavy Driver and Driver Specialist
   // are driver-only (the names imply it). Lead Wedge is wedge-only. Lucky

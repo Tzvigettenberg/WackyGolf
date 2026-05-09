@@ -17,6 +17,15 @@ const STATE_AIMING = 1;
 const MAX_DRAG_PX = 200;
 const MIN_DRAG_PX = 6;
 
+// Cancel zone — once the player has dragged back at least
+// CANCEL_ARM_PX, dragging the pointer back toward the start position
+// (current dragLen drops below CANCEL_RATIO × maxDragLen seen this gesture)
+// puts the swing in CANCEL mode. Releasing in CANCEL mode does NOT fire.
+// Small swings (max never reaches CANCEL_ARM_PX) are immune — releasing
+// always fires for low-power shots.
+const CANCEL_ARM_PX = 30;
+const CANCEL_RATIO = 0.25;
+
 // CSS selectors that should NOT trigger a swing when tapped/dragged
 const UI_BLOCK_SELECTOR = '#club-selector, #minimap, #hud-top, button';
 
@@ -50,6 +59,9 @@ export class SwingController {
     this.startY = 0;
     this.dx = 0;
     this.dy = 0;
+    // Largest drag distance seen during the current gesture. Drives the
+    // cancel-zone check in _isCancel().
+    this._maxDragLen = 0;
 
     this.orbs = this._makeOrbs(28);
     // Landing-rest ring is intentionally NOT added to the 3D scene anymore —
@@ -151,6 +163,7 @@ export class SwingController {
     this.startY = e.clientY;
     this.dx = 0;
     this.dy = 0;
+    this._maxDragLen = 0;
     this._hideOrbs();
     this.landingMarker.visible = false;
     // reset smoothing so the next aim's first frame snaps cleanly to its target
@@ -165,6 +178,8 @@ export class SwingController {
     if (e.isPrimary === false) return;
     this.dx = e.clientX - this.startX;
     this.dy = e.clientY - this.startY;
+    const len = Math.hypot(this.dx, this.dy);
+    if (len > this._maxDragLen) this._maxDragLen = len;
     this._updateAim();
     e.preventDefault();
   };
@@ -178,9 +193,17 @@ export class SwingController {
     this._predictedRest = null;
     this._smoothInit = false;
     this.onAim(null);
-    this._fire();
+    // Cancel zone: pulled back substantially then dragged the pointer
+    // back near the start before releasing → swallow the shot.
+    if (!this._isCancel()) this._fire();
     e.preventDefault();
   };
+
+  /** True when current drag is in the cancel zone — see CANCEL_* constants. */
+  _isCancel() {
+    const dragLen = Math.hypot(this.dx, this.dy);
+    return this._maxDragLen >= CANCEL_ARM_PX && dragLen < this._maxDragLen * CANCEL_RATIO;
+  }
 
   _computeLaunch() {
     const dragLen = Math.hypot(this.dx, this.dy);
@@ -225,23 +248,34 @@ export class SwingController {
       return;
     }
 
+    // In cancel zone: hide the trajectory entirely and tell the host to
+    // flip the power meter into CANCEL state. Skipping the predictor is
+    // also a small perf win on every cancel-zone frame.
+    if (this._isCancel()) {
+      this._hideOrbs();
+      this.landingMarker.visible = false;
+      this._predictedRest = null;
+      this._smoothInit = false;
+      this.onAim({ cancel: true, power: launch.power });
+      return;
+    }
+
     const bounceMult = this.getBounceMultiplier();
     const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
-    // Use the EXACT first ground-contact position — bounces and roll aren't
-    // shown on the minimap so the player has to estimate them. The exact
-    // contact point (not the nearest sample) is what makes the marker honest.
-    // Eagle Eye swaps this for the final rest position.
+    // Always show the FIRST ground-contact position in the red marker —
+    // honest about where the ball will physically touch down regardless
+    // of items, multipliers, or bounce profile. Eagle Eye still earns its
+    // keep by extending the dotted minimap line through bounces + roll.
     const eagleEye = this.getShowFullTrajectory();
-    const firstLanding = traj.firstContactPos || traj.rest;
-    const target = eagleEye ? traj.rest : firstLanding;
+    const target = traj.firstContactPos || traj.rest;
 
     this._predictedRest = target;
     this.landingMarker.visible = true;
 
-    // Minimap gets either the airborne arc only, or — with Eagle Eye —
-    // the full sampled path including bounces and roll.
+    // Minimap dotted line: airborne arc only by default, full path with
+    // Eagle Eye (so the player can read where the ball will roll out to).
     const samples = eagleEye
       ? traj.samples
       : traj.samples.slice(0, traj.firstContactIdx + 1);
