@@ -200,8 +200,9 @@ export class CashOut {
     const { strokes, par, strokeLimit } = score;
 
     // Phase 1: fill in strokes one by one (green, or red if past par).
-    // No per-ball SFX — sounds on this screen are reserved for actual cash
-    // count-ups (see _countUp / _animate). The ball animation is purely visual.
+    // Each stroke gets a surface-themed tick so the ball-fill animation
+    // has audible pulse — fairway click for under-par strokes, rough thud
+    // for ones past par. Pitch climbs slightly with each successive stroke.
     let count = 0;
     for (let i = 0; i < Math.min(strokes, balls.length); i++) {
       const isOver = i >= par;
@@ -209,6 +210,8 @@ export class CashOut {
         balls[i].classList.add(isOver ? 'over' : 'used');
         count += 1;
         this.strokesCountEl.textContent = `${count}/${strokeLimit}`;
+        const pitch = Math.min(1, 0.3 + i * 0.08);
+        sfx.bounce(pitch, isOver ? 'rough' : 'fairway');
       }, delay));
       delay += STROKE_GAP;
     }
@@ -216,18 +219,20 @@ export class CashOut {
     // Pause, then start awarding savings
     delay += 220;
 
-    // Phase 2: glow saved-under-par circles (positions strokes..par-1).
+    // Phase 2: glow saved-under-par circles — gold "you saved a stroke" beat.
     for (let i = strokes; i < par; i++) {
       this._timers.push(setTimeout(() => {
         balls[i].classList.add('saved-par');
+        sfx.cashGain();
       }, delay));
       delay += SAVED_GAP + 30;
     }
 
-    // Phase 3: glow saved-leeway circles (positions max(strokes,par)..limit-1).
+    // Phase 3: glow saved-leeway circles — quieter cushion ticks.
     for (let i = Math.max(strokes, par); i < strokeLimit; i++) {
       this._timers.push(setTimeout(() => {
         balls[i].classList.add('saved-leeway');
+        sfx.uiClick();
       }, delay));
       delay += SAVED_GAP - 20;
     }

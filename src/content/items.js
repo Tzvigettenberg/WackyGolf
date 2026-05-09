@@ -111,6 +111,24 @@ export const ITEMS = [
     icon: 'icon-gem',
   },
 
+  // ---- wind utility items ----
+  {
+    id: 'wind-charm',
+    name: 'Wind Charm',
+    desc: 'Wind has no effect on your shots.',
+    cost: 12,
+    rarity: 'uncommon',
+    icon: 'icon-gem',
+  },
+  {
+    id: 'tailwind-talisman',
+    name: 'Tailwind Talisman',
+    desc: 'Each hole, wind blows from your tee toward the cup.',
+    cost: 18,
+    rarity: 'rare',
+    icon: 'icon-gem',
+  },
+
   // ---- rare: changes how the ball BEHAVES in the world ----
   {
     id: 'bouncy-ball',
@@ -127,6 +145,15 @@ export const ITEMS = [
     desc: '+$3 every time you sink the ball.',
     cost: 14,
     rarity: 'rare',
+    icon: 'fa-solid fa-circle',
+    slot: 'ball',
+  },
+  {
+    id: 'heavy-ball',
+    name: 'Heavy Ball',
+    desc: 'Wind affects you 50% less. Steel-grey ball.',
+    cost: 9,
+    rarity: 'common',
     icon: 'fa-solid fa-circle',
     slot: 'ball',
   },

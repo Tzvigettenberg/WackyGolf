@@ -261,7 +261,10 @@ export class SwingController {
     }
 
     const bounceMult = this.getBounceMultiplier();
-    const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult);
+    // Pull live wind straight off the physics object so the predicted
+    // trajectory matches the actual flight exactly.
+    const windForce = this.ball.windForce || { x: 0, z: 0 };
+    const traj = predictTrajectory(this.ball.position, launch.velocity, this.surfaces, bounceMult, windForce);
     this._placeOrbs(traj.samples, launch.power, traj.firstContactIdx);
 
     // Always show the FIRST ground-contact position in the red marker —

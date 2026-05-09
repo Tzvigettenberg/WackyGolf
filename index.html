@@ -201,14 +201,57 @@
     body.title-active #shot-distance,
     body.title-active #item-bar,
     body.title-active #item-bar-popover,
+    body.title-active #wind-indicator,
     body.title-active .rotate-btn { display: none !important; }
 
-    /* In-game item bar — small column on the right edge under the minimap.
-       One pill per held item instance. Lights up when its effect is being
-       applied; pulses on trigger events. */
+    /* Wind indicator — under the minimap. Green chip with a red arrow
+       rotated to wind direction + a speed pill below. Hidden when wind
+       is fully blocked (Wind Charm) so the UI stays clean. */
+    #wind-indicator {
+      position: fixed;
+      top: calc(env(safe-area-inset-top, 12px) + 156px);
+      right: 12px;
+      width: 56px;
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      pointer-events: none;
+      z-index: 4;
+      transition: opacity 0.2s ease;
+    }
+    #wind-indicator.calm { opacity: 0.4; }
+    #wind-indicator.blocked { opacity: 0; }
+    #wind-icon {
+      width: 38px; height: 38px;
+      background: rgba(46, 125, 50, 0.55);
+      border: 1.5px solid rgba(255, 255, 255, 0.45);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    }
+    #wind-arrow {
+      width: 0; height: 0;
+      border-left: 7px solid transparent;
+      border-right: 7px solid transparent;
+      border-bottom: 16px solid #ff5544;
+      transform-origin: 50% 70%;
+      transform: rotate(0deg);
+      transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.4));
+    }
+    #wind-speed {
+      color: white;
+      font-size: 10px; font-weight: 800; letter-spacing: 0.5px;
+      background: rgba(0, 0, 0, 0.55);
+      padding: 2px 6px;
+      border-radius: 999px;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+      white-space: nowrap;
+    }
+
+    /* In-game item bar — pushed BELOW the wind indicator so they stack
+       cleanly on the right edge: minimap, wind, items. */
     #item-bar {
       position: fixed;
-      top: calc(env(safe-area-inset-top, 12px) + 156px);  /* under minimap */
+      top: calc(env(safe-area-inset-top, 12px) + 234px);  /* under wind */
       right: 12px;
       display: flex; flex-direction: column; gap: 6px;
       pointer-events: none;     /* default — pills opt back in below */
@@ -1477,6 +1520,7 @@
     body.preview-active #shot-distance,
     body.preview-active #item-bar,
     body.preview-active #item-bar-popover,
+    body.preview-active #wind-indicator,
     body.preview-active .rotate-btn { display: none !important; }
 
     /* Detail view — transparent overlay so the live 3D hole is visible behind it */
@@ -1818,6 +1862,10 @@
   </div>
   <div id="hud-bottom">Pick a club · drag back · release to swing · sink it</div>
   <div id="shot-distance">0 YD</div>
+  <div id="wind-indicator" aria-label="Wind">
+    <div id="wind-icon"><div id="wind-arrow"></div></div>
+    <div id="wind-speed">0</div>
+  </div>
   <div id="score-banner">
     <div class="banner-name"></div>
     <div class="banner-cash"></div>

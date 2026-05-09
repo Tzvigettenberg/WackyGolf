@@ -11,9 +11,11 @@ import {
 import { buildHole, disposeHole, buildBall, buildSceneBackdrop } from './scene/Hole.js';
 import { Trail } from './scene/Trail.js';
 import { FollowCamera } from './scene/FollowCamera.js';
+import { WindFx } from './scene/WindFx.js';
 import { BallPhysics, BALL_RADIUS, getSurfaceAt } from './physics/BallPhysics.js';
 import { SwingController } from './input/SwingController.js';
 import { Bag } from './gameplay/Club.js';
+import { Wind } from './gameplay/Wind.js';
 import { ClubSelector } from './ui/ClubSelector.js';
 import { Minimap } from './ui/Minimap.js';
 import { PowerMeter } from './ui/PowerMeter.js';
@@ -205,6 +207,23 @@ function hideRunOver() {
   document.body.classList.remove('run-over-active');
 }
 
+/**
+ * Push the current wind state to physics + UI. Splits out from
+ * loadCurrentHole so item changes mid-hole (rare for wind items, but
+ * keeps the surface area clean) re-apply the right multiplier.
+ *
+ * Multiplier stacking: Wind Charm overrides everything to 0; Heavy Ball
+ * halves; otherwise full strength.
+ */
+function applyWindToWorld() {
+  let mult = 1;
+  if (run.ball === 'heavy-ball')      mult *= 0.5;
+  if (run.hasItem('wind-charm'))      mult  = 0;
+  physics.windForce = wind.effectiveForce(mult);
+  if (typeof updateWindUI === 'function') updateWindUI(mult);
+  if (windFx) windFx.setWind(physics.windForce);
+}
+
 // Apply item-driven world effects: ball color/glow, bounce multiplier on
 // physics, minimap range rings. Re-runs every time the run state changes
 // (purchase, sale, hole start) so visuals stay in sync with the bag.
@@ -223,6 +242,12 @@ function applyItemEffects() {
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x332200);
     physics.bounceMultiplier = 1.0;
     trail.setColor(0xffd86b);
+  } else if (run.ball === 'heavy-ball') {
+    // Heavy Ball — steel-grey ball, lower bounce so it reads as denser.
+    ballMesh.material.color.setHex(0x8c95a0);
+    if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x000000);
+    physics.bounceMultiplier = 0.85;
+    trail.setColor(0xc0c8d2);
   } else {
     ballMesh.material.color.setHex(0xffffff);
     if (ballMesh.material.emissive) ballMesh.material.emissive.setHex(0x000000);
@@ -237,6 +262,10 @@ function applyItemEffects() {
 run.onChange(() => {
   updateHUD();
   applyItemEffects();
+  // Heavy Ball / Wind Charm change wind strength on the fly. Direction
+  // override (Tailwind Talisman) is set at hole load only — that's fine,
+  // it kicks in next hole.
+  applyWindToWorld();
 });
 updateHUD();
 
@@ -558,6 +587,34 @@ const itemBar = new ItemBar({ run });
 // Confetti shower — fired on hole-in-one and course-complete.
 const confetti = new Confetti();
 
+// Wind — rolled on each hole load. Items can dampen or override.
+const wind = new Wind();
+const windIndicatorEl = document.getElementById('wind-indicator');
+const windArrowEl     = document.getElementById('wind-arrow');
+const windSpeedEl     = document.getElementById('wind-speed');
+
+// 3D wisp effect — drifting white motes that visualize wind direction.
+const windFx = new WindFx(scene);
+
+/**
+ * Refresh the on-screen wind chip (arrow rotation + speed text). The
+ * `multiplier` arg is the wind item multiplier already applied to physics
+ * — passing it through so the UI shows the EFFECTIVE wind a player will
+ * actually feel (a Wind Charm collapses speed to 0; Heavy Ball halves it).
+ */
+function updateWindUI(multiplier = 1) {
+  if (!windIndicatorEl) return;
+  const effSpeed = wind.speed * multiplier;
+  // CSS arrow at rotate(0) points up. World angle 0 = +X (right). Map
+  // world angle a → CSS angle a + 90° so 'up on minimap' (= world -Z)
+  // lines up with 'up on screen'.
+  const cssDeg = (wind.angle + Math.PI / 2) * 180 / Math.PI;
+  if (windArrowEl) windArrowEl.style.transform = `rotate(${cssDeg}deg)`;
+  windSpeedEl.textContent = effSpeed < 0.05 ? '0' : effSpeed.toFixed(1);
+  windIndicatorEl.classList.toggle('blocked', multiplier === 0);
+  windIndicatorEl.classList.toggle('calm', effSpeed < 0.5 && multiplier !== 0);
+}
+
 // ----- swing controller -----
 const swing = new SwingController({
   ball: physics,
@@ -674,6 +731,18 @@ function loadCurrentHole({ restoring = false } = {}) {
   // refresh per-hole use counters on special clubs
   bag.resetHoleUses();
   swing.setEnabled(true);
+
+  // Roll fresh wind for this hole, then let items dampen or override it.
+  wind.rollForHole(run.holeNumber);
+  if (run.hasItem('tailwind-talisman')) {
+    // Force a tailwind from tee toward cup so the player gets a helping push.
+    const dx = currentHole.cupPosition.x - currentHole.teePosition.x;
+    const dz = currentHole.cupPosition.z - currentHole.teePosition.z;
+    wind.setAngle(Math.atan2(dz, dx));
+  }
+  // Push hole bounds to the wisp pool so they spawn within the field.
+  if (windFx) windFx.setBounds(currentHole.bounds);
+  applyWindToWorld();
 
   // Trust Fund pays out at hole start — flash the pill so the player
   // sees the connection between the +$ and the item. Skipped on restore.
@@ -904,6 +973,9 @@ function frame() {
   // refresh item-bar pill states (active conditions, expired triggers).
   // Cheap — touches DOM only when classes actually change.
   itemBar.update({ club: bag.active, isAiming: swing.isAiming, isAtRest: physics.isAtRest });
+
+  // Drift the wind wisps. Cheap — early-outs to opacity:0 when wind is calm.
+  windFx.update(dt);
 
   // distance counter — straight-line yards from where this shot started
   if (shotStartPos) {

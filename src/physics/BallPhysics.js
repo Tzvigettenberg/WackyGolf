@@ -122,6 +122,10 @@ export class BallPhysics {
     // refresh this before each shot from current run state.
     this.bounceMultiplier = 1.0;
 
+    // Wind — host writes {x,z} acceleration before each hole. Applied
+    // ONLY while the ball is airborne; rolling balls aren't affected.
+    this.windForce = { x: 0, z: 0 };
+
     // callbacks the host wires up
     this.onHoled = null;
     this.onCameToRest = null;
@@ -170,6 +174,13 @@ export class BallPhysics {
 
     // gravity (vertical only)
     this.velocity.y += GRAVITY * dt;
+
+    // wind — only nudges the ball while it's airborne; once rolling on
+    // the ground, surface friction takes over and wind is irrelevant.
+    if (this.position.y > BALL_RADIUS + 0.02) {
+      this.velocity.x += this.windForce.x * dt;
+      this.velocity.z += this.windForce.z * dt;
+    }
 
     // air drag — proportional to speed²
     const speed = this.velocity.length();
@@ -263,8 +274,14 @@ const SAMPLE_INTERVAL = 3;            // emit a trajectory sample every N steps 
 const MAX_SAMPLES = 60;               // hard cap on trajectory points returned
 
 /** One physics sub-step. Mutates the {p, v} pair. Returns true once at rest. */
-function _step(p, v, surfaces, bounceMultiplier = 1.0) {
+function _step(p, v, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }) {
   v.y += GRAVITY * PREDICT_DT;
+
+  // Wind — same airborne-only gate as the live physics step.
+  if (p.y > BALL_RADIUS + 0.02) {
+    v.x += windForce.x * PREDICT_DT;
+    v.z += windForce.z * PREDICT_DT;
+  }
 
   const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
   if (speed > 0) {
@@ -312,11 +329,11 @@ function _step(p, v, surfaces, bounceMultiplier = 1.0) {
  * Forward-simulate to final rest. Returns { x, y, z } of resting position.
  * Used by the cyan ground ring + minimap target circle.
  */
-export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0) {
+export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   for (let i = 0; i < PREDICT_MAX_STEPS; i++) {
-    if (_step(p, v, surfaces, bounceMultiplier)) return { x: p.x, y: p.y, z: p.z };
+    if (_step(p, v, surfaces, bounceMultiplier, windForce)) return { x: p.x, y: p.y, z: p.z };
   }
   return { x: p.x, y: p.y, z: p.z };
 }
@@ -332,7 +349,7 @@ export function predictRest(startPos, startVel, surfaces, bounceMultiplier = 1.0
  *                     3D orb display to the airborne arc only — the part
  *                     of the prediction that's most informative to the player.
  */
-export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier = 1.0) {
+export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier = 1.0, windForce = { x: 0, z: 0 }) {
   const p = { x: startPos.x, y: startPos.y, z: startPos.z };
   const v = { x: startVel.x, y: startVel.y, z: startVel.z };
   const samples = [];
@@ -350,7 +367,7 @@ export function predictTrajectory(startPos, startVel, surfaces, bounceMultiplier
       samples.push({ x: p.x, y: p.y, z: p.z });
     }
 
-    const atRest = _step(p, v, surfaces, bounceMultiplier);
+    const atRest = _step(p, v, surfaces, bounceMultiplier, windForce);
 
     if (firstContactIdx < 0 && wasAirborne && p.y <= BALL_RADIUS + 0.05) {
       firstContactIdx = Math.max(0, samples.length - 1);
