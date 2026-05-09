@@ -13,6 +13,10 @@
   <title>Wacky Golf</title>
   <style>
     :root { color-scheme: light; }
+    /* border-box everywhere — padding/borders included in declared widths
+       so 100%-wide containers (like the full-screen shop card) never spill
+       past the viewport on mobile. */
+    *, *::before, *::after { box-sizing: border-box; }
     html, body {
       margin: 0; padding: 0;
       width: 100%; height: 100dvh;

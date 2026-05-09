@@ -661,9 +661,11 @@ function loadCurrentHole({ restoring = false } = {}) {
     bounds: currentHole.bounds,
   });
 
-  // snap visuals
+  // snap visuals — face the camera straight at the cup from the tee so
+  // doglegs and curved holes start oriented toward the line of play.
   ballMesh.position.copy(physics.position);
-  followCamera.targetYaw = 0;
+  const _tee = currentHole.teePosition, _cup = currentHole.cupPosition;
+  followCamera.targetYaw = Math.atan2(_cup.x - _tee.x, _tee.z - _cup.z);
   followCamera.snap(physics.position);
 
   // tell Run the par/limit for this hole (boss-aware leeway). On restore we
@@ -753,6 +755,22 @@ physics.onCameToRest = () => {
     return;
   }
   freezeAndFadeDistance();
+
+  // Auto-face the cup so the player doesn't have to hand-rotate after every
+  // shot — especially after a long shot that overruns past the pin. The
+  // FollowCamera lerps yaw toward targetYaw over a few frames so the view
+  // swings smoothly rather than snapping. The player can still nudge with
+  // the rotate buttons after the auto-face settles.
+  if (currentHole && !physics.isHoled) {
+    const cup = currentHole.cupPosition;
+    const ball = physics.position;
+    // Skip the auto-face if the ball is essentially on top of the cup —
+    // the angle would be unstable at that radius and not worth the swing.
+    const dxz = Math.hypot(cup.x - ball.x, cup.z - ball.z);
+    if (dxz > 1.2) {
+      followCamera.targetYaw = Math.atan2(cup.x - ball.x, ball.z - cup.z);
+    }
+  }
 
   // Surface-based bonus items: pay out when the ball comes to rest on a
   // matching surface. Each is gated by ownership so non-owners get nothing.

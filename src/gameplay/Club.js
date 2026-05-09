@@ -96,6 +96,36 @@ export const CLUBS = [
     desc: 'Massive range. 1 use per hole.',
     icon: 'icon-club',
   },
+
+  // Wacky long-distance putter — driver-tier maxSpeed but a flat putter
+  // launch angle, so the ball hugs the ground and runs forever. Great
+  // for fairway runners; useless if you need to clear a tree.
+  {
+    id: 'super-putter',
+    name: 'Super Putter',
+    short: 'SP',
+    rarity: 'rare',
+    maxSpeed: 80,
+    launchAngle: deg(3),
+    cost: 18,
+    desc: 'Putter that LAUNCHES. Long, low, all roll.',
+    icon: 'icon-club',
+  },
+
+  // Sky-high lob — wedge-tier speed but a near-vertical launch. Drops
+  // almost straight down, perfect for clearing a wall of trees in front
+  // of you (or for flexing on a short approach).
+  {
+    id: 'lobber',
+    name: 'Lobber Wedge',
+    short: 'LB',
+    rarity: 'uncommon',
+    maxSpeed: 36,
+    launchAngle: deg(70),
+    cost: 11,
+    desc: 'Sky-high lob. Drops nearly straight down.',
+    icon: 'icon-club',
+  },
 ];
 
 // Derive visual color from rarity (uniform across all clubs of the same tier).

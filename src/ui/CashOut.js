@@ -165,10 +165,11 @@ export class CashOut {
     }, delay));
     delay += CASH_MS + 200;
 
-    // enable button
+    // enable button + single celebratory chime when everything settles
     this._timers.push(setTimeout(() => {
       this.btn.disabled = false;
       this.btn.classList.add('ready');
+      if (cashAfter > cashBefore) sfx.cashGain();
     }, delay));
   }
 
@@ -236,32 +237,32 @@ export class CashOut {
 
   _countUp(el, from, to, delayMs) {
     this._timers.push(setTimeout(() => {
-      // Each line gets one coin chime as its number starts ticking up.
-      if (to > 0) sfx.cashGain();
       this._animate(el, from, to, COUNT_MS, (v) => `+$${v}`);
     }, delayMs));
   }
 
   _countCash(el, from, to, durationMs) {
-    // The big "you went from X to Y" cash counter — celebrate.
-    if (to > from) sfx.cashGain();
     this._animate(el, from, to, durationMs, (v) => `$${v}`);
   }
 
+  // One short coin tick per $ change in the displayed value. Caps at
+  // MAX_TICKS_PER_FRAME so a fast $50 climb doesn't smear into a single
+  // distorted block of audio — extra dollars are absorbed silently rather
+  // than fired as overlapping ticks.
   _animate(el, from, to, durationMs, fmt) {
     const start = performance.now();
-    let lastTickAt = 0;
-    const TICK_INTERVAL = 50;          // ~20 ticks/sec — slot-machine feel
+    let lastValue = from;
     const isCounting = to !== from;
+    const MAX_TICKS_PER_FRAME = 3;
     const step = (now) => {
       const t = Math.min(1, (now - start) / durationMs);
       const eased = 1 - Math.pow(1 - t, 3); // easeOutCubic
       const value = Math.round(from + (to - from) * eased);
       el.textContent = fmt(value);
-      // Slot-machine ticks during the climb. Skipped on no-op animations.
-      if (isCounting && t < 1 && now - lastTickAt >= TICK_INTERVAL) {
-        sfx.cashTick(t);
-        lastTickAt = now;
+      if (isCounting && value !== lastValue) {
+        const ticks = Math.min(MAX_TICKS_PER_FRAME, Math.abs(value - lastValue));
+        for (let i = 0; i < ticks; i++) sfx.cashTick();
+        lastValue = value;
       }
       if (t < 1) {
         const id = requestAnimationFrame(step);
