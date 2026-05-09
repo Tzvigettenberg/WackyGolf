@@ -743,43 +743,111 @@
       color: #ffd86b;
       letter-spacing: 0.5px;
     }
+    /* Bag slots — small square chips. Each is icon-only; tap to surface
+       a detail panel below the grid. Grid auto-fills with a small min so
+       you get 5+ chips per row on most phones. */
     #shop .bag-slots {
       display: grid;
-      /* 130px min keeps two columns visible on a 320px iPhone SE. */
-      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(56px, 1fr));
       gap: 6px;
       padding: 6px;
       background: rgba(0,0,0,0.22);
       border-radius: 10px;
     }
+    /* Ball slot uses the same chip style but only ever has one cell, so
+       align it left rather than stretching. */
+    #shop .ball-slots {
+      display: flex; gap: 6px;
+      padding: 6px;
+      background: rgba(0,0,0,0.22);
+      border-radius: 10px;
+    }
+    #shop .ball-slots .bag-slot { width: 56px; }
     #shop .bag-slot {
+      aspect-ratio: 1;
       background: rgba(255,255,255,0.06);
       border: 1.5px dashed rgba(255,255,255,0.18);
       border-radius: 8px;
-      min-height: 38px;
-      padding: 5px 7px;
-      display: flex; flex-direction: column; align-items: stretch; justify-content: center;
-      gap: 5px;
+      display: flex; align-items: center; justify-content: center;
       cursor: pointer;
-      transition: background 0.15s ease, border-color 0.15s ease;
+      transition: background 0.15s ease, border-color 0.15s ease,
+                  transform 0.08s ease;
+      position: relative;
     }
-    #shop .bag-slot.empty {
-      align-items: center; justify-content: center;
-      opacity: 0.45;
-    }
-    #shop .bag-slot:not(.empty) {
+    #shop .bag-slot.empty { opacity: 0.45; }
+    #shop .bag-slot.filled {
       background: rgba(255,255,255,0.08);
       border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.3));
-      border-style: solid;
-      cursor: pointer;
     }
-    #shop .bag-slot.expanded {
-      background: rgba(255,255,255,0.14);
+    #shop .bag-slot.filled:active { transform: scale(0.94); }
+    #shop .bag-slot.selected {
+      background: rgba(255,216,107,0.15);
+      box-shadow: 0 0 0 2px var(--rarity-color, #ffd86b);
     }
-    #shop .slot-empty-dot {
+    #shop .bag-slot-plus {
       font-size: 18px; font-weight: 800;
-      opacity: 0.55;
+      color: rgba(255,255,255,0.55);
     }
+    #shop .bag-slot-icon {
+      font-size: 18px;
+      color: var(--rarity-color, white);
+    }
+
+    /* Detail panel under the bag/ball chips — populated when a chip is
+       expanded. Shows rarity / name / desc / sell button. */
+    #shop .bag-detail,
+    #shop .ball-detail {
+      margin-top: 6px;
+      padding: 10px 12px;
+      background: rgba(0, 0, 0, 0.30);
+      border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.18));
+      border-radius: 10px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    #shop .bag-detail-head {
+      display: flex; align-items: center; gap: 10px;
+    }
+    #shop .bag-detail-icon {
+      width: 32px; height: 32px;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0, 0, 0, 0.4);
+      border: 1.5px solid var(--rarity-color, rgba(255,255,255,0.3));
+      color: var(--rarity-color, white);
+      border-radius: 7px;
+      font-size: 14px;
+    }
+    #shop .bag-detail-titles { min-width: 0; flex: 1; }
+    #shop .bag-detail-rarity {
+      font-size: 9px; font-weight: 800; letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--rarity-color, white);
+      opacity: 0.85;
+    }
+    #shop .bag-detail-name {
+      font-size: 14px; font-weight: 800;
+      color: white;
+      line-height: 1.2;
+    }
+    #shop .bag-detail-desc {
+      font-size: 11.5px;
+      opacity: 0.85;
+      line-height: 1.35;
+    }
+    #shop .bag-detail-sell {
+      align-self: flex-end;
+      padding: 7px 14px;
+      background: rgba(255,107,107,0.18);
+      color: #ffb0b0;
+      border: 1.5px solid rgba(255,107,107,0.5);
+      border-radius: 7px;
+      font-size: 11.5px; font-weight: 800; letter-spacing: 0.5px;
+      cursor: pointer;
+      font-family: inherit;
+      text-transform: uppercase;
+      transition: transform 0.08s ease, background 0.15s ease;
+    }
+    #shop .bag-detail-sell:active { transform: scale(0.95); }
     #shop .slot-head {
       display: flex; align-items: center; justify-content: space-between;
       gap: 6px;
@@ -859,7 +927,7 @@
     #shop .shop-pill-name {
       flex: 1; min-width: 0;
       font-size: 12.5px; font-weight: 800;
-      color: var(--rarity-color, white);
+      color: white;
       letter-spacing: 0.4px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }

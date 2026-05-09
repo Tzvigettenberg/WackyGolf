@@ -670,6 +670,12 @@ const swing = new SwingController({
   bag,
   onShotFired: (power) => {
     sfx.swing(typeof power === 'number' ? power : 0.5);
+    // Lock the camera angle to the player's current view at the moment
+    // of release. Without this, leftover yaw easing from the previous
+    // onCameToRest auto-face would keep rotating the camera DURING the
+    // airborne phase — feels like "the camera turns in mid-flight" because
+    // it's still chasing a target set when the last shot landed.
+    followCamera.targetYaw = followCamera.yaw;
     // Trigger item pulses BEFORE run.onShot increments — Lucky Tee fires on
     // strokes === 0, and Heavy Driver/Driver Specialist/Lead Wedge fire
     // whenever the shot uses them.

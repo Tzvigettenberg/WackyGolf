@@ -113,13 +113,15 @@ export class Shop {
           <span class="bag-count"></span>
         </div>
         <div class="bag-slots"></div>
+        <div class="bag-detail" style="display:none"></div>
       </div>
       <div class="items-section">
         <div class="items-section-title">
           <span>Ball</span>
           <span class="equip-status"></span>
         </div>
-        <div class="equipped-ball"></div>
+        <div class="ball-slots"></div>
+        <div class="ball-detail" style="display:none"></div>
       </div>
       <div class="items-section">
         <div class="items-section-title">
@@ -372,48 +374,63 @@ export class Shop {
   }
 
   _refreshBall() {
-    const list = this.bodyEl.querySelector('.equipped-ball');
+    const slotsEl = this.bodyEl.querySelector('.ball-slots');
+    const detailEl = this.bodyEl.querySelector('.ball-detail');
     const status = this.bodyEl.querySelector('.equip-status');
-    if (!list) return;
-    list.innerHTML = '';
+    if (!slotsEl) return;
+    slotsEl.innerHTML = '';
+
     const id = this.run.ball;
+    const slot = document.createElement('div');
+    slot.className = 'bag-slot';
     if (!id) {
+      // Empty ball slot looks like an empty bag slot — visible chip with a
+      // dashed border and "+" rather than a fallback line of text.
+      slot.classList.add('empty');
+      slot.innerHTML = '<span class="bag-slot-plus">+</span>';
+      slotsEl.appendChild(slot);
       if (status) status.textContent = 'empty';
-      const empty = document.createElement('div');
-      empty.className = 'held-empty';
-      empty.textContent = 'No ball equipped — find one in the shop.';
-      list.appendChild(empty);
+      if (detailEl) {
+        detailEl.style.display = 'none';
+        detailEl.innerHTML = '';
+      }
       return;
     }
     const item = itemById(id);
     if (!item) return;
     if (status) status.textContent = 'equipped';
-    const sellValue = this.run.sellValue(item.cost);
-    const expanded = this.expandedBall;
-    const pill = document.createElement('div');
-    pill.className = 'shop-pill ball-pill' + (expanded ? ' expanded' : '');
-    pill.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-    pill.innerHTML = `
-      <div class="shop-pill-head">
-        <i class="shop-pill-icon ${item.icon || 'fa-solid fa-circle'}"></i>
-        <span class="shop-pill-name">${item.name}</span>
-      </div>
-      ${expanded ? `
-        <div class="shop-pill-desc">${item.desc}</div>
-        <button class="shop-pill-sell" type="button">Sell $${sellValue}</button>
-      ` : ''}
-    `;
-    pill.addEventListener('click', (e) => {
-      if (e.target.closest('.shop-pill-sell')) return;
+    slot.classList.add('filled');
+    if (this.expandedBall) slot.classList.add('selected');
+    slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
+    slot.innerHTML = `<i class="bag-slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>`;
+    slot.addEventListener('click', () => {
       this.expandedBall = !this.expandedBall;
       this._refresh();
     });
-    const sellBtn = pill.querySelector('.shop-pill-sell');
-    if (sellBtn) sellBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._trySellBall();
-    });
-    list.appendChild(pill);
+    slotsEl.appendChild(slot);
+
+    if (detailEl) {
+      if (!this.expandedBall) {
+        detailEl.style.display = 'none';
+        detailEl.innerHTML = '';
+      } else {
+        const sellValue = this.run.sellValue(item.cost);
+        detailEl.style.display = '';
+        detailEl.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
+        detailEl.innerHTML = `
+          <div class="bag-detail-head">
+            <i class="bag-detail-icon ${item.icon || 'fa-solid fa-circle'}"></i>
+            <div class="bag-detail-titles">
+              <div class="bag-detail-rarity">${item.rarity}</div>
+              <div class="bag-detail-name">${item.name}</div>
+            </div>
+          </div>
+          <div class="bag-detail-desc">${item.desc}</div>
+          <button class="bag-detail-sell" type="button">Sell $${sellValue}</button>
+        `;
+        detailEl.querySelector('.bag-detail-sell').addEventListener('click', () => this._trySellBall());
+      }
+    }
   }
 
   _refreshBag() {
@@ -421,46 +438,58 @@ export class Shop {
     if (countEl) countEl.textContent = `${this.run.items.length} / ${this.run.bagSlots}`;
 
     const slotsEl = this.bodyEl.querySelector('.bag-slots');
+    const detailEl = this.bodyEl.querySelector('.bag-detail');
     if (!slotsEl) return;
     slotsEl.innerHTML = '';
+
     for (let i = 0; i < this.run.bagSlots; i++) {
       const slot = document.createElement('div');
       slot.className = 'bag-slot';
       const id = this.run.items[i];
       if (!id) {
         slot.classList.add('empty');
-        slot.innerHTML = '<span class="slot-empty-dot">+</span>';
+        slot.innerHTML = '<span class="bag-slot-plus">+</span>';
         slotsEl.appendChild(slot);
         continue;
       }
       const item = itemById(id);
       if (!item) continue;
-      const sellValue = this.run.sellValue(item.cost);
-      const expanded = this.expandedSlot === i;
+      slot.classList.add('filled');
+      if (this.expandedSlot === i) slot.classList.add('selected');
       slot.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
-      if (expanded) slot.classList.add('expanded');
-      // Compact default: icon + name only. Expand reveals desc + sell.
-      slot.innerHTML = `
-        <div class="slot-head">
-          <i class="slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>
-          <div class="slot-name">${item.name}</div>
-        </div>
-        ${expanded ? `
-          <div class="slot-desc">${item.desc}</div>
-          <button class="slot-sell" type="button">Sell $${sellValue}</button>
-        ` : ''}
-      `;
+      slot.innerHTML = `<i class="bag-slot-icon ${item.icon || 'fa-solid fa-circle'}"></i>`;
       const idx = i;
-      slot.addEventListener('click', (e) => {
-        if (e.target.closest('.slot-sell')) return;
-        this._toggleExpand(idx);
-      });
-      const sellBtn = slot.querySelector('.slot-sell');
-      if (sellBtn) sellBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this._trySellItem(idx);
-      });
+      slot.addEventListener('click', () => this._toggleExpand(idx));
       slotsEl.appendChild(slot);
+    }
+
+    // Detail panel below the chip grid — shows the currently-expanded slot.
+    if (detailEl) {
+      const idx = this.expandedSlot;
+      const id = idx >= 0 ? this.run.items[idx] : null;
+      if (!id) {
+        detailEl.style.display = 'none';
+        detailEl.innerHTML = '';
+      } else {
+        const item = itemById(id);
+        if (item) {
+          const sellValue = this.run.sellValue(item.cost);
+          detailEl.style.display = '';
+          detailEl.style.setProperty('--rarity-color', RARITY_COLORS[item.rarity] || '#fff');
+          detailEl.innerHTML = `
+            <div class="bag-detail-head">
+              <i class="bag-detail-icon ${item.icon || 'fa-solid fa-circle'}"></i>
+              <div class="bag-detail-titles">
+                <div class="bag-detail-rarity">${item.rarity}</div>
+                <div class="bag-detail-name">${item.name}</div>
+              </div>
+            </div>
+            <div class="bag-detail-desc">${item.desc}</div>
+            <button class="bag-detail-sell" type="button">Sell $${sellValue}</button>
+          `;
+          detailEl.querySelector('.bag-detail-sell').addEventListener('click', () => this._trySellItem(idx));
+        }
+      }
     }
   }
 
